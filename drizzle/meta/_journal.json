@@ -15,6 +15,13 @@
       "when": 1717116691627,
       "tag": "0001_black_thor_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1718054856502,
+      "tag": "0002_magical_ravenous",
+      "breakpoints": true
     }
   ]
 }
