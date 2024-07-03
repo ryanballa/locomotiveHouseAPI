@@ -3,11 +3,43 @@ import { drizzle } from 'drizzle-orm/neon-http';
 import { neon } from '@neondatabase/serverless';
 import { addresses, consists } from './db/schema';
 import { Hono } from 'hono';
+import { env } from 'hono/adapter';
+import { createMiddleware } from 'hono/factory';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 import * as addressesModel from './addresses/model';
 import * as consistsModel from './consists/model';
+import { HTTPException } from 'hono/http-exception';
 
 export type Env = {
 	DATABASE_URL: string;
+	CLERK_JWT_KEY: string;
+};
+
+const checkAuth = async function (c, next) {
+	const { CLERK_SECRET_KEY, CLERK_JWT_KEY } = env<{ CLERK_SECRET_KEY: string; CLERK_JWT_KEY: string }>(c, 'workerd');
+	const Clerk = createClerkClient({ jwtKey: CLERK_JWT_KEY });
+	const token = c.req.raw.headers.get('authorization');
+	if (token) {
+		const temp = token.split('Bearer ');
+		if (temp[1] != undefined) {
+			const token = JSON.parse(temp[1]).jwt;
+			console.log('the token');
+			console.log(token);
+			const verfication = await verifyToken(token, {
+				//authorizedParties: ['http://localhost:5173', 'https://clerk.dev'],
+				jwtKey: CLERK_JWT_KEY,
+			});
+			console.log('Verification');
+			console.log(verfication);
+			return next();
+		}
+	}
+	return c.json(
+		{
+			error: 'Unauthenticated',
+		},
+		403
+	);
 };
 
 const dbInitalizer = function ({ c }: any) {
@@ -17,7 +49,7 @@ const dbInitalizer = function ({ c }: any) {
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get('/api/addresses/', async (c) => {
+app.get('/api/addresses/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const result = await db.select().from(addresses);
@@ -25,6 +57,7 @@ app.get('/api/addresses/', async (c) => {
 			result,
 		});
 	} catch (error) {
+		console.log(error);
 		return c.json(
 			{
 				error,
@@ -34,7 +67,7 @@ app.get('/api/addresses/', async (c) => {
 	}
 });
 
-app.post('/api/addresses/', async (c) => {
+app.post('/api/addresses/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
 	const newAddresses = await addressesModel.createAddress(db, data as addressesModel.Address);
@@ -54,7 +87,7 @@ app.post('/api/addresses/', async (c) => {
 	);
 });
 
-app.put('/api/addresses/:id', async (c) => {
+app.put('/api/addresses/:id', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const id = c.req.param('id');
@@ -79,7 +112,7 @@ app.put('/api/addresses/:id', async (c) => {
 	}
 });
 
-app.delete('/api/addresses/:id', async (c) => {
+app.delete('/api/addresses/:id', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
 	const deletedAddress = await addressesModel.deleteAddress(db, id);
@@ -99,7 +132,7 @@ app.delete('/api/addresses/:id', async (c) => {
 	);
 });
 
-app.get('/api/consists/', async (c) => {
+app.get('/api/consists/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const result = await db.select().from(consists);
@@ -116,7 +149,7 @@ app.get('/api/consists/', async (c) => {
 	}
 });
 
-app.post('/api/consists/', async (c) => {
+app.post('/api/consists/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
 	const newConsist = await consistsModel.createConsist(db, data as consistsModel.Consist);
@@ -136,7 +169,7 @@ app.post('/api/consists/', async (c) => {
 	);
 });
 
-app.delete('/api/consists/:id', async (c) => {
+app.delete('/api/consists/:id', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
 	const deletedConsist = await consistsModel.deleteConsist(db, id);
