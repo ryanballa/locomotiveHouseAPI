@@ -4,11 +4,10 @@ import { neon } from '@neondatabase/serverless';
 import { addresses, consists } from './db/schema';
 import { Hono } from 'hono';
 import { env } from 'hono/adapter';
-import { createMiddleware } from 'hono/factory';
 import { createClerkClient, verifyToken } from '@clerk/backend';
 import * as addressesModel from './addresses/model';
 import * as consistsModel from './consists/model';
-import { HTTPException } from 'hono/http-exception';
+import { cors } from 'hono/cors';
 
 export type Env = {
 	DATABASE_URL: string;
@@ -16,21 +15,17 @@ export type Env = {
 };
 
 const checkAuth = async function (c, next) {
-	const { CLERK_SECRET_KEY, CLERK_JWT_KEY } = env<{ CLERK_SECRET_KEY: string; CLERK_JWT_KEY: string }>(c, 'workerd');
+	const { CLERK_JWT_KEY } = env<{ CLERK_SECRET_KEY: string; CLERK_JWT_KEY: string }>(c, 'workerd');
 	const Clerk = createClerkClient({ jwtKey: CLERK_JWT_KEY });
 	const token = c.req.raw.headers.get('authorization');
 	if (token) {
 		const temp = token.split('Bearer ');
 		if (temp[1] != undefined) {
 			const token = JSON.parse(temp[1]).jwt;
-			console.log('the token');
-			console.log(token);
 			const verfication = await verifyToken(token, {
 				//authorizedParties: ['http://localhost:5173', 'https://clerk.dev'],
 				jwtKey: CLERK_JWT_KEY,
 			});
-			console.log('Verification');
-			console.log(verfication);
 			return next();
 		}
 	}
@@ -48,6 +43,16 @@ const dbInitalizer = function ({ c }: any) {
 };
 
 const app = new Hono<{ Bindings: Env }>();
+
+app.use(
+	'/api/*',
+	cors({
+		origin: (origin, c) => {
+			const { ALLOWED_ORIGIN } = env<{ ALLOWED_ORIGIN: string }>(c, 'workerd');
+			return ALLOWED_ORIGIN;
+		},
+	})
+);
 
 app.get('/api/addresses/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
