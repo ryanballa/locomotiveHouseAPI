@@ -15,15 +15,15 @@ export type Env = {
 };
 
 const checkAuth = async function (c, next) {
-	const { CLERK_JWT_KEY } = env<{ CLERK_SECRET_KEY: string; CLERK_JWT_KEY: string }>(c, 'workerd');
+	const { CLERK_JWT_KEY, ALLOWED_PARTIES } = env<{ ALLOWED_PARTIES: string; CLERK_JWT_KEY: string }>(c, 'workerd');
 	const Clerk = createClerkClient({ jwtKey: CLERK_JWT_KEY });
 	const token = c.req.raw.headers.get('authorization');
 	if (token) {
 		const temp = token.split('Bearer ');
 		if (temp[1] != undefined) {
 			const token = JSON.parse(temp[1]).jwt;
-			const verfication = await verifyToken(token, {
-				//authorizedParties: ['http://localhost:5173', 'https://clerk.dev'],
+			await verifyToken(token, {
+				authorizedParties: [ALLOWED_PARTIES],
 				jwtKey: CLERK_JWT_KEY,
 			});
 			return next();
