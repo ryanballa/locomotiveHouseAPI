@@ -234,7 +234,7 @@ app.delete('/api/consists/:id', checkAuth, async (c) => {
 	);
 });
 
-app.post('/api/webhooks', async (c) => {
+app.post('/api/webhooks/', async (c) => {
 	const { WEBHOOK_SECRET } = env<{ WEBHOOK_SECRET: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
 	const svixId = c.req.raw.headers.get('svix-id');
