@@ -273,7 +273,7 @@ app.post('/api/webhooks/', async (c) => {
 			'svix-signature': svixSig,
 		});
 	} catch (err) {
-		console.log('Error verifying webhook:', err.message);
+		console.log('Error verifying the webhook:', err.message);
 		return c.json(
 			{
 				error: err.message,
