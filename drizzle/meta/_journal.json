@@ -22,6 +22,20 @@
       "when": 1718054856502,
       "tag": "0002_magical_ravenous",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1723492746727,
+      "tag": "0003_slimy_earthquake",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1723564151049,
+      "tag": "0004_lazy_shocker",
+      "breakpoints": true
     }
   ]
 }

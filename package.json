@@ -29,6 +29,7 @@
 		"@clerk/backend": "^1.2.4",
 		"@neondatabase/serverless": "^0.9.3",
 		"drizzle-orm": "^0.30.10",
-		"hono": "^4.3.11"
+		"hono": "^4.3.11",
+		"svix": "^1.29.0"
 	}
 }

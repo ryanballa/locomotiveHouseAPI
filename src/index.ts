@@ -1,22 +1,24 @@
 // src/index.ts
 import { drizzle } from 'drizzle-orm/neon-http';
+import { Webhook } from 'svix';
 import { neon } from '@neondatabase/serverless';
-import { addresses, consists } from './db/schema';
+import { addresses, consists, clubs } from './db/schema';
 import { Hono } from 'hono';
 import { env } from 'hono/adapter';
-import { createClerkClient, verifyToken } from '@clerk/backend';
+import { verifyToken } from '@clerk/backend';
 import * as addressesModel from './addresses/model';
 import * as consistsModel from './consists/model';
+import * as clubsModel from './clubs/model';
 import { cors } from 'hono/cors';
 
 export type Env = {
 	DATABASE_URL: string;
 	CLERK_JWT_KEY: string;
+	WEBHOOK_SECRET: string;
 };
 
 const checkAuth = async function (c, next) {
 	const { CLERK_JWT_KEY, ALLOWED_PARTIES } = env<{ ALLOWED_PARTIES: string; CLERK_JWT_KEY: string }>(c, 'workerd');
-	const Clerk = createClerkClient({ jwtKey: CLERK_JWT_KEY });
 	const token = c.req.raw.headers.get('authorization');
 	if (token) {
 		const temp = token.split('Bearer ');
@@ -137,6 +139,44 @@ app.delete('/api/addresses/:id', checkAuth, async (c) => {
 	);
 });
 
+app.get('/api/clubs/', checkAuth, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const result = await db.select().from(clubs);
+		return c.json({
+			result,
+		});
+	} catch (error) {
+		console.log(error);
+		return c.json(
+			{
+				error,
+			},
+			400
+		);
+	}
+});
+
+app.post('/api/clubs/', checkAuth, async (c) => {
+	const db = dbInitalizer({ c });
+	const data = await c.req.json();
+	const newClub = await clubsModel.createClub(db, data as clubsModel.Club);
+	if (newClub.error) {
+		return c.json(
+			{
+				error: newClub.error,
+			},
+			400
+		);
+	}
+	return c.json(
+		{
+			club: newClub,
+		},
+		201
+	);
+});
+
 app.get('/api/consists/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
@@ -189,6 +229,62 @@ app.delete('/api/consists/:id', checkAuth, async (c) => {
 	return c.json(
 		{
 			address: deletedConsist,
+		},
+		200
+	);
+});
+
+app.post('/api/webhooks', async (c) => {
+	const { WEBHOOK_SECRET } = env<{ WEBHOOK_SECRET: string }>(c, 'workerd');
+	const db = dbInitalizer({ c });
+	const svixId = c.req.raw.headers.get('svix-id');
+	const svixSig = c.req.raw.headers.get('svix-signature');
+	const svixTime = c.req.raw.headers.get('svix-timestamp');
+
+	if (!WEBHOOK_SECRET) {
+		return c.json(
+			{
+				error: 'No webhook secret provided',
+			},
+			403
+		);
+	}
+	if (!svixId || !svixSig || !svixTime) {
+		return c.json(
+			{
+				error: 'No SVIX headers provided',
+			},
+			400
+		);
+	}
+	// Create a new Svix instance with secret.
+	const wh = new Webhook(WEBHOOK_SECRET);
+
+	let evt;
+	const data = await c.req.json();
+
+	// Attempt to verify the incoming webhook
+	// If successful, the payload will be available from 'evt'
+	// If the verification fails, error out and  return error code
+	try {
+		evt = wh.verify(JSON.stringify(data), {
+			'svix-id': svixId,
+			'svix-timestamp': svixTime,
+			'svix-signature': svixSig,
+		});
+	} catch (err) {
+		console.log('Error verifying webhook:', err.message);
+		return c.json(
+			{
+				error: err.message,
+			},
+			400
+		);
+	}
+
+	return c.json(
+		{
+			user: evt,
 		},
 		200
 	);
