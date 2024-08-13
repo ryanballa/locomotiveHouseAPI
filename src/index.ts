@@ -8,6 +8,7 @@ import { env } from 'hono/adapter';
 import { verifyToken } from '@clerk/backend';
 import * as addressesModel from './addresses/model';
 import * as consistsModel from './consists/model';
+import * as usersModel from './users/model';
 import * as clubsModel from './clubs/model';
 import { cors } from 'hono/cors';
 
@@ -280,6 +281,34 @@ app.post('/api/webhooks/', async (c) => {
 			},
 			400
 		);
+	}
+
+	if (evt.type === 'user.created') {
+		const formattedData = { ...data.data };
+		formattedData.token = data.data.id;
+		const newUser = await usersModel.createUser(db, formattedData as usersModel.User);
+		if (newUser.error) {
+			return c.json(
+				{
+					error: newUser.error,
+				},
+				400
+			);
+		}
+	}
+
+	if (evt.type === 'user.deleted') {
+		const formattedData = { ...data.data };
+		formattedData.token = data.data.id;
+		const deletedUser = await usersModel.deleteUser(db, formattedData.token);
+		if (deletedUser.error) {
+			return c.json(
+				{
+					error: deletedUser.error,
+				},
+				400
+			);
+		}
 	}
 
 	return c.json(
