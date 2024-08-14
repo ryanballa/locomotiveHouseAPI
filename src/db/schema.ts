@@ -1,5 +1,5 @@
 // db/schema.ts
-import { pgTable, serial, integer, text, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, text, boolean, primaryKey } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const addresses = pgTable('addresses', {
@@ -23,3 +23,30 @@ export const users = pgTable('users', {
 	id: serial('id').primaryKey().notNull(),
 	token: text('token').notNull(),
 });
+export const ClubsRelations = relations(clubs, ({ many }) => ({
+	usersToClubs: many(usersToClubs),
+}));
+export const usersToClubs = pgTable(
+	'users_to_clubs',
+	{
+		userId: integer('user_id')
+			.notNull()
+			.references(() => users.id),
+		clubId: integer('club_id')
+			.notNull()
+			.references(() => clubs.id),
+	},
+	(t) => ({
+		pk: primaryKey({ columns: [t.userId, t.clubId] }),
+	})
+);
+export const usersToClubsRelations = relations(usersToClubs, ({ one }) => ({
+	club: one(clubs, {
+		fields: [usersToClubs.clubId],
+		references: [clubs.id],
+	}),
+	user: one(users, {
+		fields: [usersToClubs.userId],
+		references: [users.id],
+	}),
+}));
