@@ -2,7 +2,7 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 import { Webhook } from 'svix';
 import { neon } from '@neondatabase/serverless';
-import { addresses, consists, clubs } from './db/schema';
+import { addresses, consists, clubs, usersToClubs, users } from './db/schema';
 import { Hono } from 'hono';
 import { env } from 'hono/adapter';
 import { verifyToken } from '@clerk/backend';
@@ -144,6 +144,7 @@ app.get('/api/clubs/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const result = await db.select().from(clubs);
+		console.log(result);
 		return c.json({
 			result,
 		});
@@ -176,6 +177,77 @@ app.post('/api/clubs/', checkAuth, async (c) => {
 		},
 		201
 	);
+});
+
+app.put('/api/clubs/:id', checkAuth, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const id = c.req.param('id');
+		const data = await c.req.json();
+		const updatedClub = await clubsModel.updateClub(db, id, data as clubsModel.Club);
+		if (updatedClub.error) {
+			return c.json(
+				{
+					error: updatedClub.error,
+				},
+				400
+			);
+		}
+		return c.json(
+			{
+				club: updatedClub.data,
+			},
+			201
+		);
+	} catch (err) {
+		console.log(err);
+	}
+});
+
+app.post('/api/clubs/assignments/', checkAuth, async (c) => {
+	const db = dbInitalizer({ c });
+	const data = await c.req.json();
+	const newClubAssignments = await clubsModel.createClubAssignments(db, data as clubsModel.AssignmentResult);
+	if (newClubAssignments.error) {
+		return c.json(
+			{
+				error: newClubAssignments.error,
+			},
+			400
+		);
+	}
+	return c.json(
+		{
+			clubAssignments: newClubAssignments,
+		},
+		201
+	);
+});
+
+app.get('/api/clubs/assignments/', checkAuth, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const result = await db.select().from(usersToClubs);
+		const usersResults = await db.select().from(users);
+
+		console.log(result);
+		console.log(usersResults);
+
+		const augmentAssignments = result.map((assignment) => {
+			const user = usersResults.find((user) => user.id === assignment.user_id);
+			return { ...assignment, token: user?.token };
+		});
+		return c.json({
+			result: augmentAssignments,
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error,
+			},
+			400
+		);
+	}
 });
 
 app.get('/api/consists/', checkAuth, async (c) => {
@@ -233,6 +305,23 @@ app.delete('/api/consists/:id', checkAuth, async (c) => {
 		},
 		200
 	);
+});
+
+app.get('/api/users/', checkAuth, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const result = await db.select().from(users);
+		return c.json({
+			result,
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error,
+			},
+			400
+		);
+	}
 });
 
 app.post('/api/webhooks/', async (c) => {
@@ -300,6 +389,7 @@ app.post('/api/webhooks/', async (c) => {
 	if (evt.type === 'user.deleted') {
 		const formattedData = { ...data.data };
 		formattedData.token = data.data.id;
+
 		const deletedUser = await usersModel.deleteUser(db, formattedData.token);
 		if (deletedUser.error) {
 			return c.json(

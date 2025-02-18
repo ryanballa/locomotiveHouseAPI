@@ -29,24 +29,24 @@ export const ClubsRelations = relations(clubs, ({ many }) => ({
 export const usersToClubs = pgTable(
 	'users_to_clubs',
 	{
-		userId: integer('user_id')
+		user_id: integer('user_id')
 			.notNull()
 			.references(() => users.id),
-		clubId: integer('club_id')
+		club_id: integer('club_id')
 			.notNull()
 			.references(() => clubs.id),
 	},
 	(t) => ({
-		pk: primaryKey({ columns: [t.userId, t.clubId] }),
+		pk: primaryKey({ columns: [t.user_id, t.club_id] }),
 	})
 );
 export const usersToClubsRelations = relations(usersToClubs, ({ one }) => ({
 	club: one(clubs, {
-		fields: [usersToClubs.clubId],
+		fields: [usersToClubs.club_id],
 		references: [clubs.id],
 	}),
 	user: one(users, {
-		fields: [usersToClubs.userId],
+		fields: [usersToClubs.user_id],
 		references: [users.id],
 	}),
 }));
