@@ -121,7 +121,6 @@ export const updateAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 			.returning();
 		return { data: results };
 	} catch (error) {
-		console.log(error);
 		return {
 			error,
 		};

@@ -44,7 +44,6 @@ export const deleteUser = async (token: string, data: User): Promise<Result> => 
 			error: 'Missing Token',
 		};
 
-	console.log(token);
 	try {
 		const response = await fetch(`https://api.clerk.com/v1/users/${data.id}`, {
 			method: 'DELETE',
