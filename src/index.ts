@@ -4,6 +4,7 @@ import { Webhook } from 'svix';
 import { neon } from '@neondatabase/serverless';
 import { addresses, consists, clubs, usersToClubs, users } from './db/schema';
 import { Hono } from 'hono';
+import { etag } from 'hono/etag';
 import { env } from 'hono/adapter';
 import { verifyToken } from '@clerk/backend';
 import * as addressesModel from './addresses/model';
@@ -46,6 +47,11 @@ const dbInitalizer = function ({ c }: any) {
 };
 
 const app = new Hono<{ Bindings: Env }>();
+app.use('/etag/*', etag());
+
+app.onError((err, c) => {
+	return c.text('Internal Server Error', 500);
+});
 
 app.use(
 	'/api/*',
@@ -65,7 +71,6 @@ app.get('/api/addresses/', checkAuth, async (c) => {
 			result,
 		});
 	} catch (error) {
-		console.log(error);
 		return c.json(
 			{
 				error,
@@ -144,12 +149,10 @@ app.get('/api/clubs/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const result = await db.select().from(clubs);
-		console.log(result);
 		return c.json({
 			result,
 		});
 	} catch (error) {
-		console.log(error);
 		return c.json(
 			{
 				error,
@@ -229,9 +232,6 @@ app.get('/api/clubs/assignments/', checkAuth, async (c) => {
 	try {
 		const result = await db.select().from(usersToClubs);
 		const usersResults = await db.select().from(users);
-
-		console.log(result);
-		console.log(usersResults);
 
 		const augmentAssignments = result.map((assignment) => {
 			const user = usersResults.find((user) => user.id === assignment.user_id);
@@ -324,6 +324,50 @@ app.get('/api/users/', checkAuth, async (c) => {
 	}
 });
 
+app.post('/api/users/:id/', checkAuth, async (c) => {
+	const db = dbInitalizer({ c });
+	const id = c.req.param('id');
+	const formattedData = { token: id };
+
+	const newUser = await usersModel.createUser(db, formattedData as usersModel.User);
+	if (newUser.error) {
+		return c.json(
+			{
+				error: newUser.error,
+			},
+			400
+		);
+	}
+	return c.json(
+		{
+			created: true,
+		},
+		200
+	);
+});
+
+app.delete('/api/users/:id/', async (c) => {
+	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
+
+	const data = await c.req.json();
+	const deletedUser = await usersModel.deleteUser(CLERK_PRIVATE_KEY, data as usersModel.User);
+
+	if (deletedUser.error) {
+		return c.json(
+			{
+				error: deletedUser.error,
+			},
+			400
+		);
+	}
+	return c.json(
+		{
+			deleted: true,
+		},
+		200
+	);
+});
+
 app.post('/api/webhooks/', async (c) => {
 	const { WEBHOOK_SECRET } = env<{ WEBHOOK_SECRET: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
@@ -363,7 +407,6 @@ app.post('/api/webhooks/', async (c) => {
 			'svix-signature': svixSig,
 		});
 	} catch (err) {
-		console.log('Error verifying the webhook:', err.message);
 		return c.json(
 			{
 				error: err.message,

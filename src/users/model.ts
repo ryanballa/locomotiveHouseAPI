@@ -38,15 +38,30 @@ export const createUser = async (db: NeonHttpDatabase<Record<string, never>>, da
 	}
 };
 
-export const deleteUser = async (db: NeonHttpDatabase<Record<string, never>>, token: string): Promise<Result> => {
+export const deleteUser = async (token: string, data: User): Promise<Result> => {
 	if (!token)
 		return {
 			error: 'Missing Token',
 		};
 
+	console.log(token);
 	try {
-		const results = await db.delete(users).where(eq(users.token, token)).returning();
-		return { data: results };
+		const response = await fetch(`https://api.clerk.com/v1/users/${data.id}`, {
+			method: 'DELETE',
+			headers: {
+				Authorization: `Bearer ${token}`,
+				'Content-Type': 'application/json',
+			},
+		});
+		if (!response.ok) {
+			return {
+				error: {
+					text: response.statusText,
+					status: response.status,
+				},
+			};
+		}
+		return { data: await response.json() };
 	} catch (error) {
 		return {
 			error,

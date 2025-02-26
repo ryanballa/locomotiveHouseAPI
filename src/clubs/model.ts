@@ -78,11 +78,12 @@ export const updateClub = async (db: NeonHttpDatabase<Record<string, never>>, id
 };
 
 export const createClubAssignments = async (db: NeonHttpDatabase<Record<string, never>>, data: AssignmentResult): Promise<Result> => {
-	if (!data)
+	console.log(data);
+	if (!data.user_id || !data.club_id) {
 		return {
 			error: 'Missing body',
 		};
-
+	}
 	try {
 		const results = await db
 			.insert(usersToClubs)
