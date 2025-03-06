@@ -7,13 +7,17 @@ export const addresses = pgTable('addresses', {
 	number: integer('int1').default(3).notNull(),
 	description: text('description').notNull(),
 	in_use: boolean('boolean').notNull(),
-	owner: text('owner').notNull(),
+	internal_user_id: integer('user_id')
+		.notNull()
+		.references(() => users.id),
 });
 export const consists = pgTable('consists', {
 	id: serial('id').primaryKey().notNull(),
 	number: integer('int1').default(3).notNull(),
 	in_use: boolean('boolean').notNull(),
-	owner: text('owner').notNull(),
+	internal_user_id: integer('user_id')
+		.notNull()
+		.references(() => users.id),
 });
 export const clubs = pgTable('clubs', {
 	id: serial('id').primaryKey().notNull(),

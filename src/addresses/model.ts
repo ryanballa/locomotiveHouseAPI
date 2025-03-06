@@ -7,7 +7,7 @@ export interface Address {
 	number: number;
 	description: string;
 	in_use: boolean;
-	owner: string;
+	internal_user_id: number;
 }
 
 export interface Result {
@@ -60,7 +60,7 @@ export const createAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 		return {
 			error: 'Missing data',
 		};
-	if (!data.number || !data.description || data.in_use === undefined || !data.owner) {
+	if (!data.number || !data.description || data.in_use === undefined || !data.internal_user_id) {
 		return {
 			error: 'Missing required field',
 		};
@@ -80,7 +80,7 @@ export const createAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 				number: data.number,
 				description: data.description,
 				in_use: data.in_use,
-				owner: data.owner,
+				internal_user_id: data.internal_user_id,
 			})
 			.returning();
 
@@ -118,7 +118,7 @@ export const updateAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 				number: data.number,
 				description: data.description,
 				in_use: data.in_use,
-				owner: data.owner,
+				internal_user_id: data.internal_user_id,
 			})
 			.where(eq(addresses.id, parseInt(id, 10)))
 			.returning();

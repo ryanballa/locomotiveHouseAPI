@@ -1,12 +1,13 @@
 import { NeonHttpDatabase } from 'drizzle-orm/neon-http';
 import { consists } from '../db/schema';
 import { eq } from 'drizzle-orm';
+import { int } from 'drizzle-orm/mysql-core';
 
 export interface Consist {
 	id: number;
 	number: number;
 	in_use: boolean;
-	owner: string;
+	internal_user_id: number;
 }
 
 export interface Result {
@@ -59,7 +60,7 @@ export const createConsist = async (db: NeonHttpDatabase<Record<string, never>>,
 		return {
 			error: 'Missing data',
 		};
-	if (!data.number || data.in_use === undefined || !data.owner) {
+	if (!data.number || data.in_use === undefined || !data.internal_user_id) {
 		return {
 			error: 'Missing required field',
 		};
@@ -78,7 +79,7 @@ export const createConsist = async (db: NeonHttpDatabase<Record<string, never>>,
 			.values({
 				number: data.number,
 				in_use: data.in_use,
-				owner: data.owner,
+				internal_user_id: data.internal_user_id,
 			})
 			.returning();
 
@@ -115,7 +116,7 @@ export const updateAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 			.set({
 				number: data.number,
 				in_use: data.in_use,
-				owner: data.owner,
+				internal_user_id: data.internal_user_id,
 			})
 			.where(eq(consists.id, parseInt(id, 10)))
 			.returning();
