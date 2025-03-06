@@ -4,18 +4,18 @@ import { relations } from 'drizzle-orm';
 
 export const addresses = pgTable('addresses', {
 	id: serial('id').primaryKey().notNull(),
-	number: integer('int1').default(3).notNull(),
+	number: integer('number').default(3).notNull(),
 	description: text('description').notNull(),
-	in_use: boolean('boolean').notNull(),
-	internal_user_id: integer('user_id')
+	in_use: boolean('in_use').notNull(),
+	user_id: integer('user_id')
 		.notNull()
 		.references(() => users.id),
 });
 export const consists = pgTable('consists', {
 	id: serial('id').primaryKey().notNull(),
-	number: integer('int1').default(3).notNull(),
-	in_use: boolean('boolean').notNull(),
-	internal_user_id: integer('user_id')
+	number: integer('number').default(3).notNull(),
+	in_use: boolean('in_use').notNull(),
+	user_id: integer('user_id')
 		.notNull()
 		.references(() => users.id),
 });
