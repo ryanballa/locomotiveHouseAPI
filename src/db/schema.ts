@@ -22,6 +22,7 @@ export const clubs = pgTable('clubs', {
 export const users = pgTable('users', {
 	id: serial('id').primaryKey().notNull(),
 	token: text('token').notNull(),
+	permission: integer('permission_id').references(() => permissions.id),
 });
 export const ClubsRelations = relations(clubs, ({ many }) => ({
 	usersToClubs: many(usersToClubs),
@@ -50,3 +51,7 @@ export const usersToClubsRelations = relations(usersToClubs, ({ one }) => ({
 		references: [users.id],
 	}),
 }));
+export const permissions = pgTable('permissions', {
+	id: serial('id').primaryKey().notNull(),
+	title: text('title').notNull(),
+});

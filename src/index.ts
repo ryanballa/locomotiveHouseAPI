@@ -2,16 +2,18 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 import { Webhook } from 'svix';
 import { neon } from '@neondatabase/serverless';
-import { addresses, consists, clubs, usersToClubs, users } from './db/schema';
+import { addresses, consists, clubs, usersToClubs, users, permissions } from './db/schema';
 import { Hono } from 'hono';
 import { etag } from 'hono/etag';
 import { env } from 'hono/adapter';
+import { logger } from 'hono/logger';
 import { verifyToken } from '@clerk/backend';
 import * as addressesModel from './addresses/model';
 import * as consistsModel from './consists/model';
 import * as usersModel from './users/model';
 import * as clubsModel from './clubs/model';
 import { cors } from 'hono/cors';
+import { check } from 'drizzle-orm/mysql-core';
 
 export type Env = {
 	DATABASE_URL: string;
@@ -26,16 +28,37 @@ const checkAuth = async function (c, next) {
 		const temp = token.split('Bearer ');
 		if (temp[1] != undefined) {
 			const token = JSON.parse(temp[1]).jwt;
-			await verifyToken(token, {
+			const verification = await verifyToken(token, {
 				authorizedParties: [ALLOWED_PARTIES],
 				jwtKey: CLERK_JWT_KEY,
 			});
+
+			if (!c.req.raw.headers.get('X-User-ID')) {
+				const db = dbInitalizer({ c });
+				const user = await usersModel.getUser(db, verification.userId);
+				if (user.data && user.data[0]) {
+					c.header('X-User-ID', user.data[0].id);
+				}
+			}
 			return next();
 		}
 	}
 	return c.json(
 		{
 			error: 'Unauthenticated',
+		},
+		403
+	);
+};
+
+const checkUserPermission = async function (c, next) {
+	const data = await c.req.json();
+	if (c.req.raw.headers.get('X-User-ID') === data.internal_user_id) {
+		return next();
+	}
+	return c.json(
+		{
+			error: 'Unauthorized',
 		},
 		403
 	);
@@ -48,6 +71,7 @@ const dbInitalizer = function ({ c }: any) {
 
 const app = new Hono<{ Bindings: Env }>();
 app.use('/etag/*', etag());
+app.use(logger());
 
 app.onError((err, c) => {
 	return c.text('Internal Server Error', 500);
@@ -324,12 +348,13 @@ app.get('/api/users/', checkAuth, async (c) => {
 	}
 });
 
-app.post('/api/users/:id/', checkAuth, async (c) => {
+app.post('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
 	const formattedData = { token: id };
 
 	const newUser = await usersModel.createUser(db, formattedData as usersModel.User);
+
 	if (newUser.error) {
 		return c.json(
 			{
@@ -346,7 +371,31 @@ app.post('/api/users/:id/', checkAuth, async (c) => {
 	);
 });
 
-app.delete('/api/users/:id/', async (c) => {
+app.put('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const id = c.req.param('id');
+	const data = await c.req.json();
+	const formattedData = { id: id, token: data.token, permission: data.permission };
+
+	const updatedUser = await usersModel.updateUser(db, id, formattedData as usersModel.User);
+
+	if (updatedUser.error) {
+		return c.json(
+			{
+				error: updatedUser.error,
+			},
+			400
+		);
+	}
+	return c.json(
+		{
+			updatedUser,
+		},
+		200
+	);
+});
+
+app.delete('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
 	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
 
 	const data = await c.req.json();
