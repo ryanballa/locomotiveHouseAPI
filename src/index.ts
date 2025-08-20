@@ -21,6 +21,8 @@ export type Env = {
 	WEBHOOK_SECRET: string;
 };
 
+//TODO break this file up
+
 const checkAuth = async function (c, next) {
 	const { CLERK_JWT_KEY, ALLOWED_PARTIES } = env<{ ALLOWED_PARTIES: string; CLERK_JWT_KEY: string }>(c, 'workerd');
 	const token = c.req.raw.headers.get('authorization');
