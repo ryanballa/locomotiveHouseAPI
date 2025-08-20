@@ -34,6 +34,7 @@ const checkAuth = async function (c, next) {
 				authorizedParties: [ALLOWED_PARTIES],
 				jwtKey: CLERK_JWT_KEY,
 			});
+
 			if (!c.req.raw.headers.get('X-User-ID')) {
 				const db = dbInitalizer({ c });
 				const user = await usersModel.getUser(db, verification.userId);
@@ -356,10 +357,10 @@ app.get('/api/users/', checkAuth, async (c) => {
 	}
 });
 
-app.post('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
+app.post('/api/users/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
-	const formattedData = { token: id };
+	const formattedData = await c.req.json();
 
 	const newUser = await usersModel.createUser(db, formattedData as usersModel.User);
 

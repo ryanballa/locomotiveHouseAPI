@@ -51,6 +51,7 @@ export const createUser = async (db: NeonHttpDatabase<Record<string, never>>, da
 			.insert(users)
 			.values({
 				token: data.token,
+				permission: data.permission,
 			})
 			.returning();
 
