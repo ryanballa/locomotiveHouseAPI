@@ -13,7 +13,7 @@ import * as consistsModel from './consists/model';
 import * as usersModel from './users/model';
 import * as clubsModel from './clubs/model';
 import { cors } from 'hono/cors';
-import { check } from 'drizzle-orm/mysql-core';
+import { eq } from 'drizzle-orm';
 
 export type Env = {
 	DATABASE_URL: string;
@@ -32,15 +32,16 @@ const checkAuth = async function (c, next) {
 				authorizedParties: [ALLOWED_PARTIES],
 				jwtKey: CLERK_JWT_KEY,
 			});
-
 			if (!c.req.raw.headers.get('X-User-ID')) {
 				const db = dbInitalizer({ c });
 				const user = await usersModel.getUser(db, verification.userId);
 				if (user.data && user.data[0]) {
-					c.header('X-User-ID', user.data[0].id);
+					await c.header('X-User-ID', user.data[0].id);
+					return next();
 				}
+			} else {
+				return next();
 			}
-			return next();
 		}
 	}
 	return c.json(
@@ -104,10 +105,11 @@ app.get('/api/addresses/', checkAuth, async (c) => {
 	}
 });
 
-app.post('/api/addresses/', checkAuth, async (c) => {
+app.post('/api/addresses/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
 	const newAddresses = await addressesModel.createAddress(db, data as addressesModel.Address);
+
 	if (newAddresses.error) {
 		return c.json(
 			{
@@ -251,10 +253,14 @@ app.post('/api/clubs/assignments/', checkAuth, async (c) => {
 	);
 });
 
-app.get('/api/clubs/assignments/', checkAuth, async (c) => {
+app.get('/api/clubs/assignments/', async (c) => {
 	const db = dbInitalizer({ c });
+	const id = c.req.query('id');
 	try {
-		const result = await db.select().from(usersToClubs);
+		const result = await db
+			.select()
+			.from(usersToClubs)
+			.where(id ? eq(usersToClubs.club_id, parseInt(id, 10)) : undefined);
 		const usersResults = await db.select().from(users);
 
 		const augmentAssignments = result.map((assignment) => {
@@ -291,7 +297,7 @@ app.get('/api/consists/', checkAuth, async (c) => {
 	}
 });
 
-app.post('/api/consists/', checkAuth, async (c) => {
+app.post('/api/consists/', checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
 	const newConsist = await consistsModel.createConsist(db, data as consistsModel.Consist);
