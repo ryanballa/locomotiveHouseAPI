@@ -57,7 +57,7 @@ const checkAuth = async function (c, next) {
 
 const checkUserPermission = async function (c, next) {
 	const data = await c.req.json();
-	if (c.req.raw.headers.get('X-User-ID') === data.user_id) {
+	if (parseInt(data.user_id, 10) === parseInt(c.req.raw.headers.get('X-User-ID'), 10)) {
 		return next();
 	}
 	return c.json(
