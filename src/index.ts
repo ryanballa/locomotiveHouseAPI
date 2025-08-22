@@ -7,7 +7,7 @@ import { Hono } from 'hono';
 import { etag } from 'hono/etag';
 import { env } from 'hono/adapter';
 import { logger } from 'hono/logger';
-import { verifyToken } from '@clerk/backend';
+import { verifyToken, createClerkClient } from '@clerk/backend';
 import * as addressesModel from './addresses/model';
 import * as consistsModel from './consists/model';
 import * as usersModel from './users/model';
@@ -19,12 +19,16 @@ export type Env = {
 	DATABASE_URL: string;
 	CLERK_JWT_KEY: string;
 	WEBHOOK_SECRET: string;
+	CLERK_PRIVATE_KEY: string;
 };
 
 //TODO break this file up
 
 const checkAuth = async function (c, next) {
-	const { CLERK_JWT_KEY, ALLOWED_PARTIES } = env<{ ALLOWED_PARTIES: string; CLERK_JWT_KEY: string }>(c, 'workerd');
+	const { CLERK_JWT_KEY, ALLOWED_PARTIES } = env<{
+		ALLOWED_PARTIES: string;
+		CLERK_JWT_KEY: string;
+	}>(c, 'workerd');
 	const token = c.req.raw.headers.get('authorization');
 	if (token) {
 		const temp = token.split('Bearer ');
@@ -34,17 +38,7 @@ const checkAuth = async function (c, next) {
 				authorizedParties: [ALLOWED_PARTIES],
 				jwtKey: CLERK_JWT_KEY,
 			});
-
-			if (!c.req.raw.headers.get('X-User-ID')) {
-				const db = dbInitalizer({ c });
-				const user = await usersModel.getUser(db, verification.userId);
-				if (user.data && user.data[0]) {
-					await c.header('X-User-ID', user.data[0].id);
-					return next();
-				}
-			} else {
-				return next();
-			}
+			return next();
 		}
 	}
 	return c.json(
@@ -56,10 +50,16 @@ const checkAuth = async function (c, next) {
 };
 
 const checkUserPermission = async function (c, next) {
-	const data = await c.req.json();
-	if (parseInt(data.user_id, 10) === parseInt(c.req.raw.headers.get('X-User-ID'), 10)) {
+	const { CLERK_PRIVATE_KEY } = env<{
+		CLERK_PRIVATE_KEY: string;
+	}>(c, 'workerd');
+	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
+	const user = await clerkClient.users.getUser(verification.userId);
+
+	if (user.privateMetadata.lhUserId) {
 		return next();
 	}
+
 	return c.json(
 		{
 			error: 'Unauthorized',
@@ -375,6 +375,7 @@ app.post('/api/users/', checkAuth, checkUserPermission, async (c) => {
 	return c.json(
 		{
 			created: true,
+			id: newUser.data[0].id,
 		},
 		200
 	);
