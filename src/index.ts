@@ -38,6 +38,7 @@ const checkAuth = async function (c, next) {
 				authorizedParties: [ALLOWED_PARTIES],
 				jwtKey: CLERK_JWT_KEY,
 			});
+			c.set('userId', verification.userId);
 			return next();
 		}
 	}
@@ -54,7 +55,7 @@ const checkUserPermission = async function (c, next) {
 		CLERK_PRIVATE_KEY: string;
 	}>(c, 'workerd');
 	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-	const user = await clerkClient.users.getUser(verification.userId);
+	const user = await clerkClient.users.getUser(c.var.userId);
 
 	if (user.privateMetadata.lhUserId) {
 		return next();
@@ -112,7 +113,6 @@ app.post('/api/addresses/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
 	const newAddresses = await addressesModel.createAddress(db, data as addressesModel.Address);
-
 	if (newAddresses.error) {
 		return c.json(
 			{
