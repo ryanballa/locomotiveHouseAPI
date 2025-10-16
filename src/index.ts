@@ -2,7 +2,7 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 import { Webhook } from 'svix';
 import { neon } from '@neondatabase/serverless';
-import { addresses, consists, clubs, usersToClubs, users, permissions } from './db/schema';
+import { addresses, consists, clubs, usersToClubs, users, permissions, appointments } from './db/schema';
 import { Hono } from 'hono';
 import { etag } from 'hono/etag';
 import { env } from 'hono/adapter';
@@ -12,6 +12,7 @@ import * as addressesModel from './addresses/model';
 import * as consistsModel from './consists/model';
 import * as usersModel from './users/model';
 import * as clubsModel from './clubs/model';
+import * as appointmentsModel from './appointments/model';
 import { cors } from 'hono/cors';
 import { eq } from 'drizzle-orm';
 
@@ -300,10 +301,11 @@ app.get('/api/consists/', checkAuth, async (c) => {
 	}
 });
 
-app.post('/api/consists/', checkUserPermission, async (c) => {
+app.post('/api/consists/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
 	const newConsist = await consistsModel.createConsist(db, data as consistsModel.Consist);
+	console.log(newConsist.error);
 	if (newConsist.error) {
 		return c.json(
 			{
@@ -422,6 +424,47 @@ app.delete('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
 	return c.json(
 		{
 			deleted: true,
+		},
+		200
+	);
+});
+
+app.get('/api/appointments/', checkAuth, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const result = await db.select().from(appointments);
+		return c.json({
+			result,
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error,
+			},
+			400
+		);
+	}
+});
+
+app.post('/api/appointments/', checkAuth, checkUserPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const id = c.req.param('id');
+	const formattedData = await c.req.json();
+
+	const newAppointment = await appointmentsModel.createAppointment(db, formattedData as appointmentsModel.Appointment);
+
+	if (newAppointment.error) {
+		return c.json(
+			{
+				error: newAppointment.error,
+			},
+			400
+		);
+	}
+	return c.json(
+		{
+			created: true,
+			id: newAppointment.data[0].id,
 		},
 		200
 	);

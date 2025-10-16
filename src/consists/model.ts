@@ -91,7 +91,7 @@ export const createConsist = async (db: NeonHttpDatabase<Record<string, never>>,
 	}
 };
 
-export const updateAddress = async (db: NeonHttpDatabase<Record<string, never>>, id: string, data: Consist): Promise<Result> => {
+export const updateConsist = async (db: NeonHttpDatabase<Record<string, never>>, id: string, data: Consist): Promise<Result> => {
 	if (!data)
 		return {
 			error: 'Missing body',
