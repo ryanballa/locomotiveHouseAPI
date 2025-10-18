@@ -18,7 +18,6 @@ import { eq } from 'drizzle-orm';
 
 export type Env = {
 	DATABASE_URL: string;
-	CLERK_JWT_KEY: string;
 	WEBHOOK_SECRET: string;
 	CLERK_PRIVATE_KEY: string;
 };
@@ -26,29 +25,39 @@ export type Env = {
 //TODO break this file up
 
 const checkAuth = async function (c, next) {
-	const { CLERK_JWT_KEY, ALLOWED_PARTIES } = env<{
-		ALLOWED_PARTIES: string;
-		CLERK_JWT_KEY: string;
+	const { CLERK_PRIVATE_KEY } = env<{
+		CLERK_PRIVATE_KEY: string;
 	}>(c, 'workerd');
-	const token = c.req.raw.headers.get('authorization');
-	if (token) {
-		const temp = token.split('Bearer ');
-		if (temp[1] != undefined) {
-			const token = JSON.parse(temp[1]).jwt;
-			const verification = await verifyToken(token, {
-				authorizedParties: [ALLOWED_PARTIES],
-				jwtKey: CLERK_JWT_KEY,
-			});
-			c.set('userId', verification.userId);
-			return next();
-		}
+
+	const authHeader = c.req.raw.headers.get('authorization');
+
+	if (!authHeader) {
+		return c.json({ error: 'Unauthenticated' }, 403);
 	}
-	return c.json(
-		{
-			error: 'Unauthenticated',
-		},
-		403
-	);
+
+	const temp = authHeader.split('Bearer ');
+	if (!temp[1]) {
+		return c.json({ error: 'Unauthenticated' }, 403);
+	}
+
+	try {
+		const payload = JSON.parse(temp[1]);
+		const token = payload.jwt;
+
+		if (!token) {
+			return c.json({ error: 'Unauthenticated' }, 403);
+		}
+
+		const verification = await verifyToken(token, {
+			secretKey: CLERK_PRIVATE_KEY,
+		});
+
+		c.set('userId', verification.sub);
+		return next();
+	} catch (error) {
+		console.error('Auth error:', error.message || error);
+		return c.json({ error: 'Unauthenticated' }, 403);
+	}
 };
 
 const checkUserPermission = async function (c, next) {
@@ -64,7 +73,7 @@ const checkUserPermission = async function (c, next) {
 
 	return c.json(
 		{
-			error: 'Unauthorized',
+			error: 'Missing permission',
 		},
 		403
 	);
@@ -80,7 +89,8 @@ app.use('/etag/*', etag());
 app.use(logger());
 
 app.onError((err, c) => {
-	return c.text('Internal Server Error', 500);
+	console.error('Unhandled error:', err);
+	return c.json({ error: 'Internal Server Error' }, 500);
 });
 
 app.use(
@@ -151,7 +161,13 @@ app.put('/api/addresses/:id', checkAuth, async (c) => {
 			201
 		);
 	} catch (err) {
-		console.log(err);
+		console.error('Error updating address:', err);
+		return c.json(
+			{
+				error: 'Failed to update address',
+			},
+			500
+		);
 	}
 });
 
@@ -233,7 +249,13 @@ app.put('/api/clubs/:id', checkAuth, async (c) => {
 			201
 		);
 	} catch (err) {
-		console.log(err);
+		console.error('Error updating club:', err);
+		return c.json(
+			{
+				error: 'Failed to update club',
+			},
+			500
+		);
 	}
 });
 
@@ -305,7 +327,6 @@ app.post('/api/consists/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
 	const newConsist = await consistsModel.createConsist(db, data as consistsModel.Consist);
-	console.log(newConsist.error);
 	if (newConsist.error) {
 		return c.json(
 			{
@@ -355,6 +376,80 @@ app.get('/api/users/', checkAuth, async (c) => {
 				error,
 			},
 			400
+		);
+	}
+});
+
+// Auto-register endpoint for first-time sign-in (no permission check needed)
+app.post('/api/users/register', checkAuth, async (c) => {
+	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
+	const db = dbInitalizer({ c });
+	const clerkUserId = c.var.userId;
+	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
+
+	try {
+		// Check if user already exists in database
+		const existingUsers = await db.select().from(users).where(eq(users.token, clerkUserId));
+
+		if (existingUsers.length > 0) {
+			// User already exists, return their ID
+			const user = existingUsers[0];
+
+			// Update Clerk metadata if not already set
+			const clerkUser = await clerkClient.users.getUser(clerkUserId);
+			if (!clerkUser.privateMetadata.lhUserId) {
+				await clerkClient.users.updateUserMetadata(clerkUserId, {
+					privateMetadata: {
+						lhUserId: user.id,
+					},
+				});
+			}
+
+			return c.json({
+				created: false,
+				id: user.id,
+				message: 'User already exists',
+			});
+		}
+
+		// Create new user
+		const formattedData = await c.req.json();
+
+		const newUser = await usersModel.createUser(db, formattedData as usersModel.User);
+
+		if (newUser.error) {
+			console.error('User creation error:', newUser.error);
+			return c.json(
+				{
+					error: newUser.error,
+				},
+				400
+			);
+		}
+
+		const userId = newUser.data[0].id;
+
+		// Update Clerk user metadata with the new lhUserId
+		await clerkClient.users.updateUserMetadata(clerkUserId, {
+			privateMetadata: {
+				lhUserId: userId,
+			},
+		});
+
+		return c.json(
+			{
+				created: true,
+				id: userId,
+			},
+			200
+		);
+	} catch (error) {
+		console.error('Register endpoint error:', error);
+		return c.json(
+			{
+				error: error.message || 'Failed to register user',
+			},
+			500
 		);
 	}
 });
@@ -465,6 +560,107 @@ app.post('/api/appointments/', checkAuth, checkUserPermission, async (c) => {
 		{
 			created: true,
 			id: newAppointment.data[0].id,
+		},
+		200
+	);
+});
+
+app.put('/api/appointments/:id', checkAuth, checkUserPermission, async (c) => {
+	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
+	const db = dbInitalizer({ c });
+	const id = c.req.param('id');
+	const data = await c.req.json();
+	const clerkUserId = c.var.userId;
+
+	// Get the current user's lhUserId
+	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
+	const clerkUser = await clerkClient.users.getUser(clerkUserId);
+	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+
+	// Check if the appointment exists and belongs to the user
+	const existingAppointments = await db.select().from(appointments).where(eq(appointments.id, parseInt(id, 10)));
+	if (existingAppointments.length === 0) {
+		return c.json(
+			{
+				error: 'Appointment not found',
+			},
+			404
+		);
+	}
+
+	if (existingAppointments[0].user_id !== lhUserId) {
+		return c.json(
+			{
+				error: 'Unauthorized: You can only edit your own appointments',
+			},
+			403
+		);
+	}
+
+	const updatedAppointment = await appointmentsModel.updateAppointment(db, id, data as appointmentsModel.Appointment);
+
+	if (updatedAppointment.error) {
+		console.error('Update appointment error:', updatedAppointment.error);
+		return c.json(
+			{
+				error: typeof updatedAppointment.error === 'string' ? updatedAppointment.error : JSON.stringify(updatedAppointment.error),
+			},
+			400
+		);
+	}
+	return c.json(
+		{
+			updated: true,
+			appointment: updatedAppointment.data,
+		},
+		200
+	);
+});
+
+app.delete('/api/appointments/:id', checkAuth, checkUserPermission, async (c) => {
+	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
+	const db = dbInitalizer({ c });
+	const id = c.req.param('id');
+	const clerkUserId = c.var.userId;
+
+	// Get the current user's lhUserId
+	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
+	const clerkUser = await clerkClient.users.getUser(clerkUserId);
+	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+
+	// Check if the appointment exists and belongs to the user
+	const existingAppointments = await db.select().from(appointments).where(eq(appointments.id, parseInt(id, 10)));
+	if (existingAppointments.length === 0) {
+		return c.json(
+			{
+				error: 'Appointment not found',
+			},
+			404
+		);
+	}
+
+	if (existingAppointments[0].user_id !== lhUserId) {
+		return c.json(
+			{
+				error: 'Unauthorized: You can only delete your own appointments',
+			},
+			403
+		);
+	}
+
+	const deletedAppointment = await appointmentsModel.deleteAppointment(db, id);
+
+	if (deletedAppointment.error) {
+		return c.json(
+			{
+				error: deletedAppointment.error,
+			},
+			400
+		);
+	}
+	return c.json(
+		{
+			deleted: true,
 		},
 		200
 	);

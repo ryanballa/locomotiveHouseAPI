@@ -1,5 +1,5 @@
 // db/schema.ts
-import { pgTable, serial, integer, text, boolean, primaryKey, date } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, text, boolean, primaryKey, date, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 export const addresses = pgTable('addresses', {
@@ -62,7 +62,7 @@ export const permissions = pgTable('permissions', {
 
 export const appointments = pgTable('appointments', {
 	id: serial('id').primaryKey().notNull(),
-	schedule: date('schedule', { mode: 'date' }),
+	schedule: timestamp('schedule', { mode: 'date' }),
 	duration: integer('number').default(3).notNull(),
 	user_id: integer('user_id')
 		.notNull()

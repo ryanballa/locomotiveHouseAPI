@@ -54,13 +54,35 @@ export const updateAppointment = async (db: NeonHttpDatabase<Record<string, neve
 			error: 'Missing ID',
 		};
 
+	const scheduleDate = new Date(data.schedule);
+
 	try {
 		const results = await db
 			.update(appointments)
 			.set({
-				schedule: data.schedule,
+				schedule: scheduleDate,
 				duration: data.duration,
 			})
+			.where(eq(appointments.id, parseInt(id, 10)))
+			.returning();
+		return { data: results };
+	} catch (error) {
+		console.error('updateAppointment model - error:', error);
+		return {
+			error,
+		};
+	}
+};
+
+export const deleteAppointment = async (db: NeonHttpDatabase<Record<string, never>>, id: string): Promise<Result> => {
+	if (!id)
+		return {
+			error: 'Missing ID',
+		};
+
+	try {
+		const results = await db
+			.delete(appointments)
 			.where(eq(appointments.id, parseInt(id, 10)))
 			.returning();
 		return { data: results };

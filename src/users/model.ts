@@ -35,7 +35,7 @@ export const createUser = async (db: NeonHttpDatabase<Record<string, never>>, da
 			error: 'Missing data',
 		};
 
-	if (!data.permission)
+	if (data.permission === undefined)
 		return {
 			error: 'Missing permission',
 		};
