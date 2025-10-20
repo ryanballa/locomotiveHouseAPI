@@ -79,6 +79,67 @@ const checkUserPermission = async function (c, next) {
 	);
 };
 
+const checkAdminPermission = async function (c, next) {
+	const { CLERK_PRIVATE_KEY } = env<{
+		CLERK_PRIVATE_KEY: string;
+	}>(c, 'workerd');
+	const db = dbInitalizer({ c });
+	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
+	const clerkUser = await clerkClient.users.getUser(c.var.userId);
+	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+
+	if (!lhUserId) {
+		return c.json(
+			{
+				error: 'User not registered',
+			},
+			403
+		);
+	}
+
+	try {
+		// Get user with their permission
+		const userResult = await db
+			.select({
+				user: users,
+				permission: permissions,
+			})
+			.from(users)
+			.leftJoin(permissions, eq(users.permission, permissions.id))
+			.where(eq(users.id, lhUserId));
+
+		if (userResult.length === 0) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				403
+			);
+		}
+
+		const userPermission = userResult[0].permission;
+
+		if (userPermission?.title === 'admin') {
+			return next();
+		}
+
+		return c.json(
+			{
+				error: 'Admin permission required',
+			},
+			403
+		);
+	} catch (error) {
+		console.error('Admin permission check error:', error);
+		return c.json(
+			{
+				error: 'Permission check failed',
+			},
+			500
+		);
+	}
+};
+
 const dbInitalizer = function ({ c }: any) {
 	const sql = neon(c.env.DATABASE_URL);
 	return drizzle(sql);
@@ -253,6 +314,38 @@ app.put('/api/clubs/:id', checkAuth, async (c) => {
 		return c.json(
 			{
 				error: 'Failed to update club',
+			},
+			500
+		);
+	}
+});
+
+app.get('/api/clubs/:id', checkAuth, checkAdminPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const id = c.req.param('id');
+		const clubResult = await db.select().from(clubs).where(eq(clubs.id, parseInt(id, 10)));
+
+		if (clubResult.length === 0) {
+			return c.json(
+				{
+					error: 'Club not found',
+				},
+				404
+			);
+		}
+
+		return c.json(
+			{
+				club: clubResult[0],
+			},
+			200
+		);
+	} catch (err) {
+		console.error('Error fetching club:', err);
+		return c.json(
+			{
+				error: 'Failed to fetch club',
 			},
 			500
 		);
@@ -578,7 +671,10 @@ app.put('/api/appointments/:id', checkAuth, checkUserPermission, async (c) => {
 	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
 
 	// Check if the appointment exists and belongs to the user
-	const existingAppointments = await db.select().from(appointments).where(eq(appointments.id, parseInt(id, 10)));
+	const existingAppointments = await db
+		.select()
+		.from(appointments)
+		.where(eq(appointments.id, parseInt(id, 10)));
 	if (existingAppointments.length === 0) {
 		return c.json(
 			{
@@ -629,7 +725,10 @@ app.delete('/api/appointments/:id', checkAuth, checkUserPermission, async (c) =>
 	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
 
 	// Check if the appointment exists and belongs to the user
-	const existingAppointments = await db.select().from(appointments).where(eq(appointments.id, parseInt(id, 10)));
+	const existingAppointments = await db
+		.select()
+		.from(appointments)
+		.where(eq(appointments.id, parseInt(id, 10)));
 	if (existingAppointments.length === 0) {
 		return c.json(
 			{
