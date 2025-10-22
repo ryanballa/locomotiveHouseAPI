@@ -10,6 +10,9 @@ export const addresses = pgTable('addresses', {
 	user_id: integer('user_id')
 		.notNull()
 		.references(() => users.id),
+	club_id: integer('club_id')
+		.notNull()
+		.references(() => clubs.id),
 });
 export const consists = pgTable('consists', {
 	id: serial('id').primaryKey().notNull(),

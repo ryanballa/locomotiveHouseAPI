@@ -14,7 +14,7 @@ import * as usersModel from './users/model';
 import * as clubsModel from './clubs/model';
 import * as appointmentsModel from './appointments/model';
 import { cors } from 'hono/cors';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 
 export type Env = {
 	DATABASE_URL: string;
@@ -182,30 +182,189 @@ app.get('/api/addresses/', checkAuth, async (c) => {
 });
 
 app.post('/api/addresses/', checkAuth, checkUserPermission, async (c) => {
+	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
-	const newAddresses = await addressesModel.createAddress(db, data as addressesModel.Address);
-	if (newAddresses.error) {
+	const clerkUserId = c.var.userId;
+
+	// Validate required fields
+	if (!data.club_id) {
 		return c.json(
 			{
-				error: newAddresses.error,
+				error: 'Missing required field: club_id',
 			},
 			400
 		);
 	}
-	return c.json(
-		{
-			address: newAddresses,
-		},
-		201
-	);
+
+	// Get the current user's lhUserId
+	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
+	const clerkUser = await clerkClient.users.getUser(clerkUserId);
+	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+
+	// Check user's permission level
+	try {
+		const userResult = await db
+			.select({
+				user: users,
+				permission: permissions,
+			})
+			.from(users)
+			.leftJoin(permissions, eq(users.permission, permissions.id))
+			.where(eq(users.id, lhUserId));
+
+		if (userResult.length === 0) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				403
+			);
+		}
+
+		const userPermission = userResult[0].permission;
+		const isAdmin = userPermission?.title === 'admin';
+
+		// If not admin, verify that request.user_id === authenticated_user_id
+		if (!isAdmin && data.user_id !== lhUserId) {
+			return c.json(
+				{
+					error: 'Unauthorized: You can only create addresses for yourself',
+				},
+				403
+			);
+		}
+
+		// Verify user is assigned to the club (unless admin)
+		if (!isAdmin) {
+			const userClubAssignment = await db
+				.select()
+				.from(usersToClubs)
+				.where(and(eq(usersToClubs.user_id, lhUserId), eq(usersToClubs.club_id, data.club_id)));
+
+			if (userClubAssignment.length === 0) {
+				return c.json(
+					{
+						error: 'Unauthorized: You are not assigned to this club',
+					},
+					403
+				);
+			}
+		}
+
+		const newAddresses = await addressesModel.createAddress(db, data as addressesModel.Address);
+		if (newAddresses.error) {
+			return c.json(
+				{
+					error: newAddresses.error,
+				},
+				400
+			);
+		}
+		return c.json(
+			{
+				address: newAddresses,
+			},
+			201
+		);
+	} catch (error) {
+		console.error('Error creating address:', error);
+		return c.json(
+			{
+				error: 'Failed to create address',
+			},
+			500
+		);
+	}
 });
 
-app.put('/api/addresses/:id', checkAuth, async (c) => {
+app.put('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
+	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
 	try {
 		const id = c.req.param('id');
 		const data = await c.req.json();
+		const clerkUserId = c.var.userId;
+
+		// Validate required fields
+		if (!data.club_id) {
+			return c.json(
+				{
+					error: 'Missing required field: club_id',
+				},
+				400
+			);
+		}
+
+		// Get the current user's lhUserId
+		const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
+		const clerkUser = await clerkClient.users.getUser(clerkUserId);
+		const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+
+		// Get the existing address record
+		const existingAddresses = await db
+			.select()
+			.from(addresses)
+			.where(eq(addresses.id, parseInt(id, 10)));
+
+		if (existingAddresses.length === 0) {
+			return c.json(
+				{
+					error: 'Address not found',
+				},
+				404
+			);
+		}
+
+		// Check user's permission level
+		const userResult = await db
+			.select({
+				user: users,
+				permission: permissions,
+			})
+			.from(users)
+			.leftJoin(permissions, eq(users.permission, permissions.id))
+			.where(eq(users.id, lhUserId));
+
+		if (userResult.length === 0) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				403
+			);
+		}
+
+		const userPermission = userResult[0].permission;
+		const isAdmin = userPermission?.title === 'admin';
+
+		// If not admin, verify that address.user_id === authenticated_user_id
+		if (!isAdmin && existingAddresses[0].user_id !== lhUserId) {
+			return c.json(
+				{
+					error: 'Unauthorized: You can only edit your own addresses',
+				},
+				403
+			);
+		}
+
+		// Verify user is assigned to the club (unless admin)
+		if (!isAdmin) {
+			const userClubAssignment = await db
+				.select()
+				.from(usersToClubs)
+				.where(and(eq(usersToClubs.user_id, lhUserId), eq(usersToClubs.club_id, data.club_id)));
+
+			if (userClubAssignment.length === 0) {
+				return c.json(
+					{
+						error: 'Unauthorized: You are not assigned to this club',
+					},
+					403
+				);
+			}
+		}
+
 		const updatedAddress = await addressesModel.updateAddress(db, id, data as addressesModel.Address);
 		if (updatedAddress.error) {
 			return c.json(
@@ -232,24 +391,89 @@ app.put('/api/addresses/:id', checkAuth, async (c) => {
 	}
 });
 
-app.delete('/api/addresses/:id', checkAuth, async (c) => {
+app.delete('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
+	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
-	const deletedAddress = await addressesModel.deleteAddress(db, id);
-	if (deletedAddress.error) {
+	const clerkUserId = c.var.userId;
+
+	// Get the current user's lhUserId
+	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
+	const clerkUser = await clerkClient.users.getUser(clerkUserId);
+	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+
+	// Get the existing address record
+	const existingAddresses = await db
+		.select()
+		.from(addresses)
+		.where(eq(addresses.id, parseInt(id, 10)));
+
+	if (existingAddresses.length === 0) {
 		return c.json(
 			{
-				error: deletedAddress.error,
+				error: 'Address not found',
 			},
-			400
+			404
 		);
 	}
-	return c.json(
-		{
-			address: deletedAddress,
-		},
-		200
-	);
+
+	try {
+		// Check user's permission level
+		const userResult = await db
+			.select({
+				user: users,
+				permission: permissions,
+			})
+			.from(users)
+			.leftJoin(permissions, eq(users.permission, permissions.id))
+			.where(eq(users.id, lhUserId));
+
+		if (userResult.length === 0) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				403
+			);
+		}
+
+		const userPermission = userResult[0].permission;
+		const isAdmin = userPermission?.title === 'admin';
+
+		// If not admin, verify that address.user_id === authenticated_user_id
+		if (!isAdmin && existingAddresses[0].user_id !== lhUserId) {
+			return c.json(
+				{
+					error: 'Unauthorized: You can only delete your own addresses',
+				},
+				403
+			);
+		}
+
+		const deletedAddress = await addressesModel.deleteAddress(db, id);
+		if (deletedAddress.error) {
+			return c.json(
+				{
+					error: deletedAddress.error,
+				},
+				400
+			);
+		}
+		return c.json(
+			{
+				address: deletedAddress,
+			},
+			200
+		);
+	} catch (error) {
+		console.error('Error deleting address:', error);
+		return c.json(
+			{
+				error: 'Failed to delete address',
+			},
+			500
+		);
+	}
 });
 
 app.get('/api/clubs/', checkAuth, async (c) => {
@@ -459,9 +683,48 @@ app.delete('/api/consists/:id', checkAuth, async (c) => {
 app.get('/api/users/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
-		const result = await db.select().from(users);
+		const result = await usersModel.getAllUsersWithClubs(db);
+
+		if (result.error) {
+			return c.json(
+				{
+					error: result.error,
+				},
+				400
+			);
+		}
+
 		return c.json({
-			result,
+			result: result.data,
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error,
+			},
+			400
+		);
+	}
+});
+
+app.get('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const id = c.req.param('id');
+		const userWithClubs = await usersModel.getUserWithClubs(db, parseInt(id, 10));
+
+		if (!userWithClubs) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				404
+			);
+		}
+
+		return c.json({
+			user: userWithClubs.user,
+			clubs: userWithClubs.clubs,
 		});
 	} catch (error) {
 		return c.json(
@@ -575,6 +838,31 @@ app.put('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
 	const data = await c.req.json();
+
+	// Handle club assignment if club_id is provided
+	if (data.club_id) {
+		const clubAssignment = await usersModel.assignClubToUser(db, id, data.club_id);
+
+		if (clubAssignment.error) {
+			return c.json(
+				{
+					error: clubAssignment.error,
+				},
+				400
+			);
+		}
+
+		return c.json(
+			{
+				assigned: true,
+				club_id: data.club_id,
+				data: clubAssignment.data,
+			},
+			200
+		);
+	}
+
+	// Handle user update (token, permission)
 	const formattedData = { id: id, token: data.token, permission: data.permission };
 
 	const updatedUser = await usersModel.updateUser(db, id, formattedData as usersModel.User);
@@ -612,6 +900,32 @@ app.delete('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
 	return c.json(
 		{
 			deleted: true,
+		},
+		200
+	);
+});
+
+app.delete('/api/users/:id/clubs/:clubId', checkAuth, checkUserPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const userId = c.req.param('id');
+	const clubId = c.req.param('clubId');
+
+	const result = await usersModel.removeClubFromUser(db, userId, clubId);
+
+	if (result.error) {
+		return c.json(
+			{
+				error: result.error,
+			},
+			400
+		);
+	}
+
+	return c.json(
+		{
+			removed: true,
+			user_id: parseInt(userId, 10),
+			club_id: parseInt(clubId, 10),
 		},
 		200
 	);

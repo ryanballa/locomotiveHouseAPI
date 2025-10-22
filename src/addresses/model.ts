@@ -1,6 +1,6 @@
 import { NeonHttpDatabase } from 'drizzle-orm/neon-http';
-import { addresses } from '../db/schema';
-import { eq } from 'drizzle-orm';
+import { addresses, usersToClubs } from '../db/schema';
+import { eq, and } from 'drizzle-orm';
 
 export interface Address {
 	id: number;
@@ -8,6 +8,7 @@ export interface Address {
 	description: string;
 	in_use: boolean;
 	user_id: number;
+	club_id: number;
 }
 
 export interface Result {
@@ -15,25 +16,44 @@ export interface Result {
 	data?: Address[] | null;
 }
 
-const checkIfAddressInUse = async (db: NeonHttpDatabase<Record<string, never>>, number: number, id: number | null): Promise<Result> => {
+/**
+ * Check if an address number is unique within a club
+ * @param db - Database instance
+ * @param number - Address number to check
+ * @param clubId - Club ID to check uniqueness in
+ * @param addressId - Optional address ID to exclude (for updates)
+ * @returns Result with error if number already exists in club, null if valid
+ */
+const checkIfAddressNumberExistsInClub = async (
+	db: NeonHttpDatabase<Record<string, never>>,
+	number: number,
+	clubId: number,
+	addressId: number | null = null
+): Promise<Result> => {
 	try {
-		const queryExisting = await selectAddress(db, number);
-		if (queryExisting?.data) {
-			let inUse = queryExisting.data.filter((item) => item.in_use);
-			if (id) {
-				inUse = inUse.filter((item) => parseInt(item.id, 10) !== parseInt(id, 10));
-			}
-			if (queryExisting.data && inUse.length > 0) {
-				return {
-					error: 'Number in use',
-				};
-			}
+		let query = db
+			.select()
+			.from(addresses)
+			.where(and(eq(addresses.number, number), eq(addresses.club_id, clubId)));
+
+		const existing = await query;
+
+		// Filter out the current address if updating
+		const conflictingAddresses = addressId
+			? existing.filter((addr) => parseInt(addr.id, 10) !== parseInt(addressId, 10))
+			: existing;
+
+		if (conflictingAddresses.length > 0) {
+			return {
+				error: `Address number ${number} already exists in this club`,
+			};
 		}
 	} catch (error) {
 		return {
 			error,
 		};
 	}
+
 	return {
 		error: null,
 		data: [],
@@ -60,12 +80,14 @@ export const createAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 		return {
 			error: 'Missing data',
 		};
-	if (!data.number || !data.description || data.in_use === undefined || !data.user_id) {
+	if (!data.number || !data.description || data.in_use === undefined || !data.user_id || !data.club_id) {
 		return {
-			error: 'Missing required field',
+			error: 'Missing required field. Required: number, description, in_use, user_id, club_id',
 		};
 	}
-	const existingFlag = await checkIfAddressInUse(db, data.number, null);
+
+	// Check if address number is unique within the club
+	const existingFlag = await checkIfAddressNumberExistsInClub(db, data.number, data.club_id, null);
 
 	if (existingFlag.error) {
 		return {
@@ -81,6 +103,7 @@ export const createAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 				description: data.description,
 				in_use: data.in_use,
 				user_id: data.user_id,
+				club_id: data.club_id,
 			})
 			.returning();
 
@@ -103,7 +126,19 @@ export const updateAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 			error: 'Missing ID',
 		};
 
-	const existingFlag = await checkIfAddressInUse(db, data.number, id);
+	if (!data.number || !data.description || data.in_use === undefined || !data.user_id || !data.club_id) {
+		return {
+			error: 'Missing required field. Required: number, description, in_use, user_id, club_id',
+		};
+	}
+
+	// Check if address number is unique within the club (excluding current address)
+	const existingFlag = await checkIfAddressNumberExistsInClub(
+		db,
+		data.number,
+		data.club_id,
+		parseInt(id, 10)
+	);
 
 	if (existingFlag.error) {
 		return {
@@ -119,6 +154,7 @@ export const updateAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 				description: data.description,
 				in_use: data.in_use,
 				user_id: data.user_id,
+				club_id: data.club_id,
 			})
 			.where(eq(addresses.id, parseInt(id, 10)))
 			.returning();

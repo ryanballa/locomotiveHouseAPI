@@ -92,6 +92,13 @@
       "when": 1760706480776,
       "tag": "0012_square_wither",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "6",
+      "when": 1761079863137,
+      "tag": "0013_tearful_raider",
+      "breakpoints": true
     }
   ]
 }
