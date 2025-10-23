@@ -707,6 +707,44 @@ app.get('/api/users/', checkAuth, async (c) => {
 	}
 });
 
+app.get('/api/users/me', checkAuth, async (c) => {
+	const db = dbInitalizer({ c });
+	const clerkUserId = c.var.userId;
+
+	try {
+		// Get user by their Clerk ID (stored in token field)
+		const result = await usersModel.getUser(db, clerkUserId);
+
+		if (!result.data || result.data.length === 0) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				401
+			);
+		}
+
+		const user = result.data[0];
+
+		// Get user's club assignments
+		const userWithClubs = await usersModel.getUserWithClubs(db, user.id);
+
+		return c.json({
+			user: {
+				...user,
+				clubs: userWithClubs?.clubs || [],
+			},
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error: 'Failed to fetch user',
+			},
+			500
+		);
+	}
+});
+
 app.get('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
