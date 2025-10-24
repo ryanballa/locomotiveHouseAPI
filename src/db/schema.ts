@@ -71,3 +71,13 @@ export const appointments = pgTable('appointments', {
 		.notNull()
 		.references(() => users.id),
 });
+
+export const inviteTokens = pgTable('invite_tokens', {
+	id: serial('id').primaryKey().notNull(),
+	token: text('token').notNull().unique(),
+	club_id: integer('club_id')
+		.notNull()
+		.references(() => clubs.id),
+	expires_at: timestamp('expires_at', { mode: 'date' }).notNull(),
+	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+});

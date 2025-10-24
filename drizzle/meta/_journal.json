@@ -99,6 +99,13 @@
       "when": 1761079863137,
       "tag": "0013_tearful_raider",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "6",
+      "when": 1761346242390,
+      "tag": "0014_yielding_vampiro",
+      "breakpoints": true
     }
   ]
 }

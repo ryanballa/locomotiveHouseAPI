@@ -2,7 +2,7 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 import { Webhook } from 'svix';
 import { neon } from '@neondatabase/serverless';
-import { addresses, consists, clubs, usersToClubs, users, permissions, appointments } from './db/schema';
+import { addresses, consists, clubs, usersToClubs, users, permissions, appointments, inviteTokens } from './db/schema';
 import { Hono } from 'hono';
 import { etag } from 'hono/etag';
 import { env } from 'hono/adapter';
@@ -13,6 +13,7 @@ import * as consistsModel from './consists/model';
 import * as usersModel from './users/model';
 import * as clubsModel from './clubs/model';
 import * as appointmentsModel from './appointments/model';
+import * as inviteTokensModel from './inviteTokens/model';
 import { cors } from 'hono/cors';
 import { eq, and } from 'drizzle-orm';
 
@@ -627,6 +628,153 @@ app.get('/api/clubs/assignments/', async (c) => {
 	}
 });
 
+app.post('/api/clubs/:id/invite-tokens', checkAuth, checkAdminPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const clubId = c.req.param('id');
+
+	try {
+		if (!clubId) {
+			return c.json(
+				{
+					error: 'Missing club ID',
+				},
+				400
+			);
+		}
+
+		// Get request body
+		const data = await c.req.json();
+		const expiresAt = data.expiresAt || data.expires_at;
+
+		if (!expiresAt) {
+			return c.json(
+				{
+					error: 'Missing expiration date',
+				},
+				400
+			);
+		}
+
+		// Create invite token
+		const result = await inviteTokensModel.createInviteToken(
+			db,
+			parseInt(clubId, 10),
+			new Date(expiresAt)
+		);
+
+		if (result.error) {
+			return c.json(
+				{
+					error: result.error,
+				},
+				400
+			);
+		}
+
+		return c.json(
+			{
+				token: result.data,
+			},
+			201
+		);
+	} catch (error) {
+		console.error('Error creating invite token:', error);
+		return c.json(
+			{
+				error: 'Failed to create invite token',
+			},
+			500
+		);
+	}
+});
+
+app.get('/api/clubs/:id/invite-tokens', checkAuth, checkAdminPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const clubId = c.req.param('id');
+
+	try {
+		if (!clubId) {
+			return c.json(
+				{
+					error: 'Missing club ID',
+				},
+				400
+			);
+		}
+
+		// Get invite tokens for club
+		const result = await inviteTokensModel.getClubInviteTokens(db, parseInt(clubId, 10));
+
+		if (result.error) {
+			return c.json(
+				{
+					error: result.error,
+				},
+				400
+			);
+		}
+
+		return c.json(
+			{
+				tokens: result.data,
+			},
+			200
+		);
+	} catch (error) {
+		console.error('Error fetching invite tokens:', error);
+		return c.json(
+			{
+				error: 'Failed to fetch invite tokens',
+			},
+			500
+		);
+	}
+});
+
+app.delete('/api/clubs/:id/invite-tokens/:token', checkAuth, checkAdminPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const token = c.req.param('token');
+
+	try {
+		if (!token) {
+			return c.json(
+				{
+					error: 'Missing token',
+				},
+				400
+			);
+		}
+
+		// Delete invite token
+		const result = await inviteTokensModel.deleteInviteToken(db, token);
+
+		if (result.error) {
+			return c.json(
+				{
+					error: result.error,
+				},
+				400
+			);
+		}
+
+		return c.json(
+			{
+				deleted: true,
+				token,
+			},
+			200
+		);
+	} catch (error) {
+		console.error('Error deleting invite token:', error);
+		return c.json(
+			{
+				error: 'Failed to delete invite token',
+			},
+			500
+		);
+	}
+});
+
 app.get('/api/consists/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
@@ -971,6 +1119,117 @@ app.delete('/api/users/:id/clubs/:clubId', checkAuth, checkUserPermission, async
 		},
 		200
 	);
+});
+
+app.post('/api/clubs/:id/join', checkAuth, checkUserPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const { CLERK_PRIVATE_KEY } = env<{
+		CLERK_PRIVATE_KEY: string;
+	}>(c, 'workerd');
+
+	try {
+		// Get invite token from query parameter
+		const inviteToken = c.req.query('invite');
+
+		if (!inviteToken) {
+			return c.json(
+				{
+					error: 'Missing invite token',
+				},
+				400
+			);
+		}
+
+		// Validate invite token
+		const tokenValidation = await inviteTokensModel.validateInviteToken(db, inviteToken);
+
+		if (tokenValidation.error) {
+			return c.json(
+				{
+					error: tokenValidation.error,
+				},
+				400
+			);
+		}
+
+		// Get authenticated user's ID from Clerk
+		const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
+		const clerkUser = await clerkClient.users.getUser(c.var.userId);
+		const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+
+		if (!lhUserId) {
+			return c.json(
+				{
+					error: 'User not registered',
+				},
+				403
+			);
+		}
+
+		// Get club ID from route parameter
+		const clubId = c.req.param('id');
+
+		if (!clubId) {
+			return c.json(
+				{
+					error: 'Missing club ID',
+				},
+				400
+			);
+		}
+
+		// Verify the invite token is for the correct club
+		if (tokenValidation.data?.club_id !== parseInt(clubId, 10)) {
+			return c.json(
+				{
+					error: 'Invalid invite token for this club',
+				},
+				400
+			);
+		}
+
+		// Verify club exists
+		const clubResult = await db.select().from(clubs).where(eq(clubs.id, parseInt(clubId, 10)));
+
+		if (clubResult.length === 0) {
+			return c.json(
+				{
+					error: 'Club not found',
+				},
+				404
+			);
+		}
+
+		// Assign user to club
+		const assignmentResult = await usersModel.assignClubToUser(db, lhUserId.toString(), parseInt(clubId, 10));
+
+		if (assignmentResult.error) {
+			return c.json(
+				{
+					error: assignmentResult.error,
+				},
+				400
+			);
+		}
+
+		return c.json(
+			{
+				joined: true,
+				club_id: parseInt(clubId, 10),
+				user_id: lhUserId,
+				club_name: clubResult[0].name,
+			},
+			200
+		);
+	} catch (error) {
+		console.error('Error joining club:', error);
+		return c.json(
+			{
+				error: 'Failed to join club',
+			},
+			500
+		);
+	}
 });
 
 app.get('/api/appointments/', checkAuth, async (c) => {
