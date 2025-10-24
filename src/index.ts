@@ -119,7 +119,7 @@ const checkAdminPermission = async function (c, next) {
 
 		const userPermission = userResult[0].permission;
 
-		if (userPermission?.title === 'admin') {
+		if (hasAdminPermission(userPermission?.title)) {
 			return next();
 		}
 
@@ -138,6 +138,10 @@ const checkAdminPermission = async function (c, next) {
 			500
 		);
 	}
+};
+
+const hasAdminPermission = (permissionTitle: string | null | undefined): boolean => {
+	return permissionTitle === 'admin' || permissionTitle === 'super-admin';
 };
 
 const dbInitalizer = function ({ c }: any) {
@@ -223,7 +227,7 @@ app.post('/api/addresses/', checkAuth, checkUserPermission, async (c) => {
 		}
 
 		const userPermission = userResult[0].permission;
-		const isAdmin = userPermission?.title === 'admin';
+		const isAdmin = hasAdminPermission(userPermission?.title);
 
 		// If not admin, verify that request.user_id === authenticated_user_id
 		if (!isAdmin && data.user_id !== lhUserId) {
@@ -336,7 +340,7 @@ app.put('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
 		}
 
 		const userPermission = userResult[0].permission;
-		const isAdmin = userPermission?.title === 'admin';
+		const isAdmin = hasAdminPermission(userPermission?.title);
 
 		// If not admin, verify that address.user_id === authenticated_user_id
 		if (!isAdmin && existingAddresses[0].user_id !== lhUserId) {
@@ -438,7 +442,7 @@ app.delete('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
 		}
 
 		const userPermission = userResult[0].permission;
-		const isAdmin = userPermission?.title === 'admin';
+		const isAdmin = hasAdminPermission(userPermission?.title);
 
 		// If not admin, verify that address.user_id === authenticated_user_id
 		if (!isAdmin && existingAddresses[0].user_id !== lhUserId) {
