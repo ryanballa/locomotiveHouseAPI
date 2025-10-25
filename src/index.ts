@@ -549,6 +549,66 @@ app.put('/api/clubs/:id', checkAuth, async (c) => {
 	}
 });
 
+app.get('/api/clubs/invite/validate', checkAuth, checkUserPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const token = c.req.query('token');
+
+	try {
+		if (!token) {
+			return c.json(
+				{
+					error: 'Missing invite token',
+				},
+				400
+			);
+		}
+
+		// Validate invite token
+		const tokenValidation = await inviteTokensModel.validateInviteToken(db, token);
+
+		if (tokenValidation.error) {
+			return c.json(
+				{
+					error: tokenValidation.error,
+				},
+				400
+			);
+		}
+
+		// Get club details
+		const clubResult = await db
+			.select()
+			.from(clubs)
+			.where(eq(clubs.id, tokenValidation.data!.club_id));
+
+		if (clubResult.length === 0) {
+			return c.json(
+				{
+					error: 'Club not found',
+				},
+				404
+			);
+		}
+
+		return c.json(
+			{
+				valid: true,
+				token: tokenValidation.data,
+				club: clubResult[0],
+			},
+			200
+		);
+	} catch (error) {
+		console.error('Error validating invite token:', error);
+		return c.json(
+			{
+				error: 'Failed to validate invite token',
+			},
+			500
+		);
+	}
+});
+
 app.get('/api/clubs/:id', checkAuth, checkAdminPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
