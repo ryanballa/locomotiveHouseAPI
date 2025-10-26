@@ -42,8 +42,17 @@ const checkAuth = async function (c, next) {
 	}
 
 	try {
-		const payload = JSON.parse(temp[1]);
-		const token = payload.jwt;
+		let token: string | undefined;
+		const bearerValue = temp[1];
+
+		// Try to parse as JSON first (legacy format: Bearer {"jwt":"token"})
+		try {
+			const payload = JSON.parse(bearerValue);
+			token = payload.jwt;
+		} catch {
+			// If not JSON, treat as direct JWT token (Bearer token)
+			token = bearerValue;
+		}
 
 		if (!token) {
 			return c.json({ error: 'Unauthenticated' }, 403);
