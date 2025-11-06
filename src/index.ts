@@ -599,11 +599,25 @@ app.get('/api/clubs/invite/validate', checkAuth, checkUserPermission, async (c) 
 			);
 		}
 
+		// Get role information if role_permission is set
+		let roleInfo = null;
+		if (tokenValidation.data?.role_permission) {
+			const permissionResult = await db
+				.select()
+				.from(permissions)
+				.where(eq(permissions.id, tokenValidation.data.role_permission));
+
+			if (permissionResult.length > 0) {
+				roleInfo = permissionResult[0];
+			}
+		}
+
 		return c.json(
 			{
 				valid: true,
 				token: tokenValidation.data,
 				club: clubResult[0],
+				role: roleInfo,
 			},
 			200
 		);
@@ -644,6 +658,112 @@ app.get('/api/clubs/:id', checkAuth, checkAdminPermission, async (c) => {
 		return c.json(
 			{
 				error: 'Failed to fetch club',
+			},
+			500
+		);
+	}
+});
+
+app.get('/api/clubs/:id/appointments', checkAuth, checkAdminPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const clubId = c.req.param('id');
+
+		if (!clubId) {
+			return c.json(
+				{
+					error: 'Missing club ID',
+				},
+				400
+			);
+		}
+
+		// Verify club exists
+		const clubResult = await db.select().from(clubs).where(eq(clubs.id, parseInt(clubId, 10)));
+		if (clubResult.length === 0) {
+			return c.json(
+				{
+					error: 'Club not found',
+				},
+				404
+			);
+		}
+
+		const appointmentsResult = await appointmentsModel.getAppointmentsByClubId(db, clubId);
+
+		if (appointmentsResult.error) {
+			return c.json(
+				{
+					error: appointmentsResult.error,
+				},
+				500
+			);
+		}
+
+		return c.json(
+			{
+				appointments: appointmentsResult.data || [],
+			},
+			200
+		);
+	} catch (err) {
+		console.error('Error fetching club appointments:', err);
+		return c.json(
+			{
+				error: 'Failed to fetch appointments',
+			},
+			500
+		);
+	}
+});
+
+app.get('/api/clubs/:id/addresses', checkAuth, checkAdminPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const clubId = c.req.param('id');
+
+		if (!clubId) {
+			return c.json(
+				{
+					error: 'Missing club ID',
+				},
+				400
+			);
+		}
+
+		// Verify club exists
+		const clubResult = await db.select().from(clubs).where(eq(clubs.id, parseInt(clubId, 10)));
+		if (clubResult.length === 0) {
+			return c.json(
+				{
+					error: 'Club not found',
+				},
+				404
+			);
+		}
+
+		const addressesResult = await addressesModel.getAddressesByClubId(db, clubId);
+
+		if (addressesResult.error) {
+			return c.json(
+				{
+					error: addressesResult.error,
+				},
+				500
+			);
+		}
+
+		return c.json(
+			{
+				addresses: addressesResult.data || [],
+			},
+			200
+		);
+	} catch (err) {
+		console.error('Error fetching club addresses:', err);
+		return c.json(
+			{
+				error: 'Failed to fetch addresses',
 			},
 			500
 		);
@@ -724,11 +844,15 @@ app.post('/api/clubs/:id/invite-tokens', checkAuth, checkAdminPermission, async 
 			);
 		}
 
+		// Get optional role permission
+		const rolePermission = data.rolePermission || data.role_permission;
+
 		// Create invite token
 		const result = await inviteTokensModel.createInviteToken(
 			db,
 			parseInt(clubId, 10),
-			new Date(expiresAt)
+			new Date(expiresAt),
+			rolePermission ? parseInt(rolePermission, 10) : undefined
 		);
 
 		if (result.error) {
@@ -1269,8 +1393,28 @@ app.post('/api/clubs/:id/join', checkAuth, checkUserPermission, async (c) => {
 			);
 		}
 
-		// Assign user to club
-		const assignmentResult = await usersModel.assignClubToUser(db, lhUserId.toString(), parseInt(clubId, 10));
+		// Get the role permission from invite token
+		const rolePermission = tokenValidation.data?.role_permission;
+
+		// Optionally get rolePermission from request body as well (for overrides)
+		let requestBodyRolePermission;
+		try {
+			const body = await c.req.json().catch(() => ({}));
+			requestBodyRolePermission = body.rolePermission || body.role_permission;
+		} catch {
+			// Body is optional
+		}
+
+		// Use body role permission if provided, otherwise use invite token role permission
+		const finalRolePermission = requestBodyRolePermission ? parseInt(requestBodyRolePermission, 10) : rolePermission;
+
+		// Assign user to club with optional role permission
+		const assignmentResult = await usersModel.assignClubToUser(
+			db,
+			lhUserId.toString(),
+			parseInt(clubId, 10),
+			finalRolePermission
+		);
 
 		if (assignmentResult.error) {
 			return c.json(
@@ -1287,6 +1431,7 @@ app.post('/api/clubs/:id/join', checkAuth, checkUserPermission, async (c) => {
 				club_id: parseInt(clubId, 10),
 				user_id: lhUserId,
 				club_name: clubResult[0].name,
+				role_assigned: finalRolePermission || null,
 			},
 			200
 		);

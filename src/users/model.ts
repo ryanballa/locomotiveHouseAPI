@@ -182,7 +182,8 @@ export const getAllUsersWithClubs = async (
 export const assignClubToUser = async (
 	db: NeonHttpDatabase<Record<string, never>>,
 	userId: string,
-	clubId: number
+	clubId: number,
+	rolePermission?: number
 ): Promise<Result> => {
 	if (!userId) {
 		return {
@@ -213,6 +214,16 @@ export const assignClubToUser = async (
 			return {
 				error: 'Club not found',
 			};
+		}
+
+		// If rolePermission is provided, update user's permission (replaces any existing role)
+		if (rolePermission) {
+			await db
+				.update(users)
+				.set({
+					permission: rolePermission,
+				})
+				.where(eq(users.id, parsedUserId));
 		}
 
 		// Try to insert the assignment

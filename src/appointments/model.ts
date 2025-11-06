@@ -1,5 +1,5 @@
 import { NeonHttpDatabase } from 'drizzle-orm/neon-http';
-import { appointments } from '../db/schema';
+import { appointments, usersToClubs } from '../db/schema';
 import { eq } from 'drizzle-orm';
 
 export interface Appointment {
@@ -85,6 +85,31 @@ export const deleteAppointment = async (db: NeonHttpDatabase<Record<string, neve
 			.delete(appointments)
 			.where(eq(appointments.id, parseInt(id, 10)))
 			.returning();
+		return { data: results };
+	} catch (error) {
+		return {
+			error,
+		};
+	}
+};
+
+export const getAppointmentsByClubId = async (db: NeonHttpDatabase<Record<string, never>>, clubId: string): Promise<Result> => {
+	if (!clubId)
+		return {
+			error: 'Missing club ID',
+		};
+
+	try {
+		const results = await db
+			.select({
+				id: appointments.id,
+				schedule: appointments.schedule,
+				duration: appointments.duration,
+				user_id: appointments.user_id,
+			})
+			.from(appointments)
+			.innerJoin(usersToClubs, eq(appointments.user_id, usersToClubs.user_id))
+			.where(eq(usersToClubs.club_id, parseInt(clubId, 10)));
 		return { data: results };
 	} catch (error) {
 		return {

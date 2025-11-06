@@ -184,3 +184,19 @@ export const deleteAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 		};
 	}
 };
+
+export const getAddressesByClubId = async (db: NeonHttpDatabase<Record<string, never>>, clubId: string): Promise<Result> => {
+	if (!clubId)
+		return {
+			error: 'Missing club ID',
+		};
+
+	try {
+		const results = await db.select().from(addresses).where(eq(addresses.club_id, parseInt(clubId, 10)));
+		return { data: results };
+	} catch (error) {
+		return {
+			error,
+		};
+	}
+};
