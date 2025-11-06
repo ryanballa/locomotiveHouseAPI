@@ -664,7 +664,7 @@ app.get('/api/clubs/:id', checkAuth, checkAdminPermission, async (c) => {
 	}
 });
 
-app.get('/api/clubs/:id/appointments', checkAuth, checkAdminPermission, async (c) => {
+app.get('/api/clubs/:id/appointments', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const clubId = c.req.param('id');
