@@ -1551,7 +1551,7 @@ app.delete('/api/appointments/:id', checkAuth, checkUserPermission, async (c) =>
 	// Get the current user's lhUserId
 	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
 	const clerkUser = await clerkClient.users.getUser(clerkUserId);
-	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+	const lhUserId = Number(clerkUser.privateMetadata.lhUserId);
 
 	// Check if the appointment exists and belongs to the user
 	const existingAppointments = await db
