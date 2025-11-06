@@ -78,6 +78,7 @@ export const inviteTokens = pgTable('invite_tokens', {
 	club_id: integer('club_id')
 		.notNull()
 		.references(() => clubs.id),
+	role_permission: integer('role_permission').references(() => permissions.id),
 	expires_at: timestamp('expires_at', { mode: 'date' }).notNull(),
 	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 });

@@ -106,6 +106,13 @@
       "when": 1761346242390,
       "tag": "0014_yielding_vampiro",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "6",
+      "when": 1762441326371,
+      "tag": "0015_loose_eddie_brock",
+      "breakpoints": true
     }
   ]
 }

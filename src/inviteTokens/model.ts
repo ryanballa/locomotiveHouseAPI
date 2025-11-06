@@ -12,6 +12,7 @@ export interface InviteToken {
 	id: number;
 	token: string;
 	club_id: number;
+	role_permission?: number | null;
 	expires_at: Date;
 	created_at: Date;
 }
@@ -28,12 +29,14 @@ const generateToken = (): string => {
  * @param db Database instance
  * @param clubId Club ID to associate with token
  * @param expiresAt Expiration date for the token
+ * @param rolePermission Optional role permission ID to assign to users who join with this token
  * @returns Result with generated token or error
  */
 export const createInviteToken = async (
 	db: NeonHttpDatabase,
 	clubId: number,
-	expiresAt: Date
+	expiresAt: Date,
+	rolePermission?: number
 ): Promise<Result<InviteToken>> => {
 	if (!clubId) {
 		return {
@@ -64,6 +67,7 @@ export const createInviteToken = async (
 			.values({
 				token,
 				club_id: clubId,
+				role_permission: rolePermission || null,
 				expires_at: expiresAt,
 				created_at: new Date(),
 			})
