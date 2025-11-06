@@ -1567,7 +1567,27 @@ app.delete('/api/appointments/:id', checkAuth, checkUserPermission, async (c) =>
 		);
 	}
 
-	if (existingAppointments[0].user_id !== lhUserId) {
+	// Check user permissions for admin override
+	const userResult = await db
+		.select({ permission: permissions })
+		.from(users)
+		.leftJoin(permissions, eq(users.permission, permissions.id))
+		.where(eq(users.id, lhUserId));
+
+	if (userResult.length === 0) {
+		return c.json(
+			{
+				error: 'User not found',
+			},
+			403
+		);
+	}
+
+	const userPermission = userResult[0].permission;
+	const isAdmin = hasAdminPermission(userPermission?.title);
+
+	// If not admin, verify that appointment.user_id === authenticated_user_id
+	if (!isAdmin && existingAppointments[0].user_id !== lhUserId) {
 		return c.json(
 			{
 				error: 'Unauthorized: You can only delete your own appointments',
