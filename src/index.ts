@@ -1,8 +1,7 @@
 // src/index.ts
-import { drizzle } from 'drizzle-orm/neon-http';
 import { Webhook } from 'svix';
-import { neon } from '@neondatabase/serverless';
 import { addresses, consists, clubs, usersToClubs, users, permissions, appointments, inviteTokens } from './db/schema';
+import { dbInitalizer } from './utils/db';
 import { Hono } from 'hono';
 import { etag } from 'hono/etag';
 import { env } from 'hono/adapter';
@@ -14,6 +13,8 @@ import * as usersModel from './users/model';
 import * as clubsModel from './clubs/model';
 import * as appointmentsModel from './appointments/model';
 import * as inviteTokensModel from './inviteTokens/model';
+import { towersRouter } from './towers/routes';
+import { issuesRouter } from './issues/routes';
 import { cors } from 'hono/cors';
 import { eq, and } from 'drizzle-orm';
 
@@ -71,43 +72,36 @@ const checkAuth = async function (c, next) {
 };
 
 const checkUserPermission = async function (c, next) {
-	const { CLERK_PRIVATE_KEY } = env<{
-		CLERK_PRIVATE_KEY: string;
-	}>(c, 'workerd');
-	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-	const user = await clerkClient.users.getUser(c.var.userId);
+	const db = dbInitalizer({ c });
+	const clerkUserId = c.var.userId;
 
-	if (user.privateMetadata.lhUserId) {
-		return next();
+	// Find user in database by clerk ID
+	const userResult = await getUserIdFromClerkId(db, clerkUserId);
+
+	if (!userResult) {
+		return c.json({ error: 'User not found in database' }, 403);
 	}
 
-	return c.json(
-		{
-			error: 'Missing permission',
-		},
-		403
-	);
+	return next();
 };
 
 const checkAdminPermission = async function (c, next) {
-	const { CLERK_PRIVATE_KEY } = env<{
-		CLERK_PRIVATE_KEY: string;
-	}>(c, 'workerd');
 	const db = dbInitalizer({ c });
-	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-	const clerkUser = await clerkClient.users.getUser(c.var.userId);
-	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
-
-	if (!lhUserId) {
-		return c.json(
-			{
-				error: 'User not registered',
-			},
-			403
-		);
-	}
+	const clerkUserId = c.var.userId;
 
 	try {
+		// Find user in database by clerk ID
+		const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
+
+		if (!userIdResult) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				403
+			);
+		}
+
 		// Get user with their permission
 		const userResult = await db
 			.select({
@@ -116,7 +110,7 @@ const checkAdminPermission = async function (c, next) {
 			})
 			.from(users)
 			.leftJoin(permissions, eq(users.permission, permissions.id))
-			.where(eq(users.id, lhUserId));
+			.where(eq(users.id, userIdResult.id));
 
 		if (userResult.length === 0) {
 			return c.json(
@@ -154,9 +148,11 @@ const hasAdminPermission = (permissionTitle: string | null | undefined): boolean
 	return permissionTitle === 'admin' || permissionTitle === 'super-admin';
 };
 
-const dbInitalizer = function ({ c }: any) {
-	const sql = neon(c.env.DATABASE_URL);
-	return drizzle(sql);
+// Utility function to get the database user ID from clerk ID
+const getUserIdFromClerkId = async (db: ReturnType<typeof dbInitalizer>, clerkUserId: string): Promise<{ id: number } | null> => {
+	const result = await db.select({ id: users.id }).from(users).where(eq(users.token, clerkUserId));
+
+	return result.length > 0 ? result[0] : null;
 };
 
 const app = new Hono<{ Bindings: Env }>();
@@ -178,6 +174,12 @@ app.use(
 	})
 );
 
+// Mount towers routes
+app.route('/api/clubs/:clubId/towers', towersRouter);
+
+// Mount issues routes
+app.route('/api/clubs/:clubId/towers/:towerId/issues', issuesRouter);
+
 app.get('/api/addresses/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
@@ -196,7 +198,6 @@ app.get('/api/addresses/', checkAuth, async (c) => {
 });
 
 app.post('/api/addresses/', checkAuth, checkUserPermission, async (c) => {
-	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
 	const clerkUserId = c.var.userId;
@@ -211,10 +212,14 @@ app.post('/api/addresses/', checkAuth, checkUserPermission, async (c) => {
 		);
 	}
 
-	// Get the current user's lhUserId
-	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-	const clerkUser = await clerkClient.users.getUser(clerkUserId);
-	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+	// Find user in database by clerk ID
+	const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
+
+	if (!userIdResult) {
+		return c.json({ error: 'User not found in database' }, 403);
+	}
+
+	const lhUserId = userIdResult.id;
 
 	// Check user's permission level
 	try {
@@ -293,7 +298,6 @@ app.post('/api/addresses/', checkAuth, checkUserPermission, async (c) => {
 });
 
 app.put('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
-	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
 	try {
 		const id = c.req.param('id');
@@ -310,10 +314,14 @@ app.put('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
 			);
 		}
 
-		// Get the current user's lhUserId
-		const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-		const clerkUser = await clerkClient.users.getUser(clerkUserId);
-		const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+		// Find user in database by clerk ID
+		const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
+
+		if (!userIdResult) {
+			return c.json({ error: 'User not found in database' }, 403);
+		}
+
+		const lhUserId = userIdResult.id;
 
 		// Get the existing address record
 		const existingAddresses = await db
@@ -406,15 +414,18 @@ app.put('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
 });
 
 app.delete('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
-	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
 	const clerkUserId = c.var.userId;
 
-	// Get the current user's lhUserId
-	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-	const clerkUser = await clerkClient.users.getUser(clerkUserId);
-	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+	// Find user in database by clerk ID
+	const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
+
+	if (!userIdResult) {
+		return c.json({ error: 'User not found in database' }, 403);
+	}
+
+	const lhUserId = userIdResult.id;
 
 	// Get the existing address record
 	const existingAddresses = await db
@@ -585,10 +596,7 @@ app.get('/api/clubs/invite/validate', checkAuth, checkUserPermission, async (c) 
 		}
 
 		// Get club details
-		const clubResult = await db
-			.select()
-			.from(clubs)
-			.where(eq(clubs.id, tokenValidation.data!.club_id));
+		const clubResult = await db.select().from(clubs).where(eq(clubs.id, tokenValidation.data!.club_id));
 
 		if (clubResult.length === 0) {
 			return c.json(
@@ -602,10 +610,7 @@ app.get('/api/clubs/invite/validate', checkAuth, checkUserPermission, async (c) 
 		// Get role information if role_permission is set
 		let roleInfo = null;
 		if (tokenValidation.data?.role_permission) {
-			const permissionResult = await db
-				.select()
-				.from(permissions)
-				.where(eq(permissions.id, tokenValidation.data.role_permission));
+			const permissionResult = await db.select().from(permissions).where(eq(permissions.id, tokenValidation.data.role_permission));
 
 			if (permissionResult.length > 0) {
 				roleInfo = permissionResult[0];
@@ -636,7 +641,10 @@ app.get('/api/clubs/:id', checkAuth, checkAdminPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const id = c.req.param('id');
-		const clubResult = await db.select().from(clubs).where(eq(clubs.id, parseInt(id, 10)));
+		const clubResult = await db
+			.select()
+			.from(clubs)
+			.where(eq(clubs.id, parseInt(id, 10)));
 
 		if (clubResult.length === 0) {
 			return c.json(
@@ -679,7 +687,10 @@ app.get('/api/clubs/:id/appointments', checkAuth, async (c) => {
 		}
 
 		// Verify club exists
-		const clubResult = await db.select().from(clubs).where(eq(clubs.id, parseInt(clubId, 10)));
+		const clubResult = await db
+			.select()
+			.from(clubs)
+			.where(eq(clubs.id, parseInt(clubId, 10)));
 		if (clubResult.length === 0) {
 			return c.json(
 				{
@@ -732,7 +743,10 @@ app.get('/api/clubs/:id/addresses', checkAuth, checkAdminPermission, async (c) =
 		}
 
 		// Verify club exists
-		const clubResult = await db.select().from(clubs).where(eq(clubs.id, parseInt(clubId, 10)));
+		const clubResult = await db
+			.select()
+			.from(clubs)
+			.where(eq(clubs.id, parseInt(clubId, 10)));
 		if (clubResult.length === 0) {
 			return c.json(
 				{
@@ -1345,19 +1359,14 @@ app.post('/api/clubs/:id/join', checkAuth, checkUserPermission, async (c) => {
 			);
 		}
 
-		// Get authenticated user's ID from Clerk
-		const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-		const clerkUser = await clerkClient.users.getUser(c.var.userId);
-		const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+		// Find user in database by clerk ID
+		const userIdResult = await getUserIdFromClerkId(db, c.var.userId);
 
-		if (!lhUserId) {
-			return c.json(
-				{
-					error: 'User not registered',
-				},
-				403
-			);
+		if (!userIdResult) {
+			return c.json({ error: 'User not found in database' }, 403);
 		}
+
+		const lhUserId = userIdResult.id;
 
 		// Get club ID from route parameter
 		const clubId = c.req.param('id');
@@ -1382,7 +1391,10 @@ app.post('/api/clubs/:id/join', checkAuth, checkUserPermission, async (c) => {
 		}
 
 		// Verify club exists
-		const clubResult = await db.select().from(clubs).where(eq(clubs.id, parseInt(clubId, 10)));
+		const clubResult = await db
+			.select()
+			.from(clubs)
+			.where(eq(clubs.id, parseInt(clubId, 10)));
 
 		if (clubResult.length === 0) {
 			return c.json(
@@ -1409,12 +1421,7 @@ app.post('/api/clubs/:id/join', checkAuth, checkUserPermission, async (c) => {
 		const finalRolePermission = requestBodyRolePermission ? parseInt(requestBodyRolePermission, 10) : rolePermission;
 
 		// Assign user to club with optional role permission
-		const assignmentResult = await usersModel.assignClubToUser(
-			db,
-			lhUserId.toString(),
-			parseInt(clubId, 10),
-			finalRolePermission
-		);
+		const assignmentResult = await usersModel.assignClubToUser(db, lhUserId.toString(), parseInt(clubId, 10), finalRolePermission);
 
 		if (assignmentResult.error) {
 			return c.json(
@@ -1488,16 +1495,19 @@ app.post('/api/appointments/', checkAuth, checkUserPermission, async (c) => {
 });
 
 app.put('/api/appointments/:id', checkAuth, checkUserPermission, async (c) => {
-	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
 	const data = await c.req.json();
 	const clerkUserId = c.var.userId;
 
-	// Get the current user's lhUserId
-	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-	const clerkUser = await clerkClient.users.getUser(clerkUserId);
-	const lhUserId = clerkUser.privateMetadata.lhUserId as number;
+	// Find user in database by clerk ID
+	const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
+
+	if (!userIdResult) {
+		return c.json({ error: 'User not found in database' }, 403);
+	}
+
+	const lhUserId = userIdResult.id;
 
 	// Check if the appointment exists and belongs to the user
 	const existingAppointments = await db
@@ -1543,15 +1553,18 @@ app.put('/api/appointments/:id', checkAuth, checkUserPermission, async (c) => {
 });
 
 app.delete('/api/appointments/:id', checkAuth, checkUserPermission, async (c) => {
-	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
 	const clerkUserId = c.var.userId;
 
-	// Get the current user's lhUserId
-	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-	const clerkUser = await clerkClient.users.getUser(clerkUserId);
-	const lhUserId = Number(clerkUser.privateMetadata.lhUserId);
+	// Find user in database by clerk ID
+	const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
+
+	if (!userIdResult) {
+		return c.json({ error: 'User not found in database' }, 403);
+	}
+
+	const lhUserId = userIdResult.id;
 
 	// Check if the appointment exists and belongs to the user
 	const existingAppointments = await db
