@@ -1238,7 +1238,7 @@ app.put('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
 
 	// Handle club assignment if club_id is provided
 	if (data.club_id) {
-		const clubAssignment = await usersModel.assignClubToUser(db, id, data.club_id);
+		const clubAssignment = await usersModel.assignClubToUser(db, id, data.club_id, data.permission);
 
 		if (clubAssignment.error) {
 			return c.json(
