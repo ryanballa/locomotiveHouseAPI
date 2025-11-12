@@ -82,3 +82,30 @@ export const inviteTokens = pgTable('invite_tokens', {
 	expires_at: timestamp('expires_at', { mode: 'date' }).notNull(),
 	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 });
+
+export const towers = pgTable('towers', {
+	id: serial('id').primaryKey().notNull(),
+	name: text('name').notNull(),
+	club_id: integer('club_id')
+		.notNull()
+		.references(() => clubs.id),
+	description: text('description'),
+	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+	updated_at: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+});
+
+export const issues = pgTable('issues', {
+	id: serial('id').primaryKey().notNull(),
+	tower_id: integer('tower_id')
+		.notNull()
+		.references(() => towers.id),
+	user_id: integer('user_id')
+		.notNull()
+		.references(() => users.id),
+	title: text('title').notNull(),
+	type: text('type').notNull(),
+	status: text('status').notNull(),
+	description: text('description'),
+	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+	updated_at: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+});
