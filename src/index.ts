@@ -148,6 +148,78 @@ const hasAdminPermission = (permissionTitle: string | null | undefined): boolean
 	return permissionTitle === 'admin' || permissionTitle === 'super-admin';
 };
 
+const checkClubAccess = async function (c, next) {
+	const db = dbInitalizer({ c });
+	const clerkUserId = c.var.userId;
+	const clubId = c.req.param('id');
+
+	try {
+		// Find user in database by clerk ID
+		const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
+
+		if (!userIdResult) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				403
+			);
+		}
+
+		// Get user permission to check if admin
+		const userResult = await db
+			.select({
+				user: users,
+				permission: permissions,
+			})
+			.from(users)
+			.leftJoin(permissions, eq(users.permission, permissions.id))
+			.where(eq(users.id, userIdResult.id));
+
+		if (userResult.length === 0) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				403
+			);
+		}
+
+		const userPermission = userResult[0].permission;
+		const isAdmin = hasAdminPermission(userPermission?.title);
+
+		// Admins have access to all clubs
+		if (isAdmin) {
+			return next();
+		}
+
+		// Non-admins must be assigned to the club
+		const clubAssignment = await db
+			.select()
+			.from(usersToClubs)
+			.where(and(eq(usersToClubs.user_id, userIdResult.id), eq(usersToClubs.club_id, parseInt(clubId, 10))));
+
+		if (clubAssignment.length === 0) {
+			return c.json(
+				{
+					error: 'Unauthorized: You do not have access to this club',
+				},
+				403
+			);
+		}
+
+		return next();
+	} catch (error) {
+		console.error('Club access check error:', error);
+		return c.json(
+			{
+				error: 'Permission check failed',
+			},
+			500
+		);
+	}
+};
+
 // Utility function to get the database user ID from clerk ID
 const getUserIdFromClerkId = async (db: ReturnType<typeof dbInitalizer>, clerkUserId: string): Promise<{ id: number } | null> => {
 	const result = await db.select({ id: users.id }).from(users).where(eq(users.token, clerkUserId));
@@ -728,7 +800,7 @@ app.get('/api/clubs/:id/appointments', checkAuth, async (c) => {
 	}
 });
 
-app.get('/api/clubs/:id/addresses', checkAuth, checkAdminPermission, async (c) => {
+app.get('/api/clubs/:id/addresses', checkAuth, checkClubAccess, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const clubId = c.req.param('id');
