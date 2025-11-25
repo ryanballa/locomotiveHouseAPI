@@ -109,3 +109,19 @@ export const issues = pgTable('issues', {
 	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
 });
+
+export const emailQueue = pgTable('email_queue', {
+	id: serial('id').primaryKey().notNull(),
+	recipient_email: text('recipient_email').notNull(),
+	subject: text('subject').notNull(),
+	body: text('body').notNull(),
+	html_body: text('html_body'),
+	status: text('status').notNull().default('pending'), // pending, sent, failed
+	retry_count: integer('retry_count').notNull().default(0),
+	max_retries: integer('max_retries').notNull().default(3),
+	last_error: text('last_error'),
+	scheduled_at: timestamp('scheduled_at', { mode: 'date' }),
+	sent_at: timestamp('sent_at', { mode: 'date' }),
+	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+	updated_at: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+});
