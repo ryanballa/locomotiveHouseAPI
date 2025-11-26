@@ -17,6 +17,7 @@ import { emailQueueModel } from './emailQueue/model';
 import { towersRouter } from './towers/routes';
 import { issuesRouter } from './issues/routes';
 import { towerReportsRouter } from './towerReports/routes';
+import { scheduledSessionsRouter } from './scheduledSessions/routes';
 import * as towerReportsModel from './towerReports/model';
 import { cors } from 'hono/cors';
 import { eq, and } from 'drizzle-orm';
@@ -358,6 +359,9 @@ app.route('/api/clubs/:clubId/towers/:towerId/reports', towerReportsRouter);
 
 // Mount issues routes (more specific)
 app.route('/api/clubs/:clubId/towers/:towerId/issues', issuesRouter);
+
+// Mount scheduled sessions routes
+app.route('/api/clubs/:clubId/scheduled-sessions', scheduledSessionsRouter);
 
 // Mount towers routes (general - must be last)
 app.route('/api/clubs/:clubId/towers', towersRouter);
