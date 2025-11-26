@@ -138,15 +138,16 @@ export const checkUserPermission = async function (c: any, next: any) {
 		.where(eq(users.token, clerkUserId));
 
 	if (!userResult || userResult.length === 0) {
-		return c.json(
-			{ error: 'User not found in database' },
-			403
-		);
+		return c.json({ error: 'User not found in database' }, 403);
 	}
 
 	const user = userResult[0];
 	const userPermission = user.permission?.title;
 	const isAdmin = hasAdminPermission(userPermission);
+
+	// Update userId to the database user ID (integer) for use in routes
+	// This overwrites the Clerk ID (string) set by checkAuth
+	c.set('userId', user.id);
 
 	// If admin or super-admin, allow access
 	if (isAdmin) {
@@ -163,10 +164,7 @@ export const checkUserPermission = async function (c: any, next: any) {
 			.where(and(eq(usersToClubs.user_id, user.id), eq(usersToClubs.club_id, parseInt(clubId, 10))));
 
 		if (!clubMembership || clubMembership.length === 0) {
-			return c.json(
-				{ error: 'User does not belong to this club' },
-				403
-			);
+			return c.json({ error: 'User does not belong to this club' }, 403);
 		}
 	}
 
