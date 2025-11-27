@@ -16,6 +16,9 @@ import * as inviteTokensModel from './inviteTokens/model';
 import { emailQueueModel } from './emailQueue/model';
 import { towersRouter } from './towers/routes';
 import { issuesRouter } from './issues/routes';
+import { towerReportsRouter } from './towerReports/routes';
+import { scheduledSessionsRouter } from './scheduledSessions/routes';
+import * as towerReportsModel from './towerReports/model';
 import { cors } from 'hono/cors';
 import { eq, and } from 'drizzle-orm';
 import { refreshAccessToken, extractRefreshToken } from './utils/tokenRefresh';
@@ -85,6 +88,12 @@ const checkUserPermission = async function (c, next) {
 	if (!userResult) {
 		return c.json({ error: 'User not found in database' }, 403);
 	}
+
+	// Store the Clerk ID separately before overwriting userId
+	c.set('clerkUserId', clerkUserId);
+	// Update userId to the database user ID (integer) for use in routes
+	// Explicitly convert to number to ensure it's not a string
+	c.set('userId', Number(userResult.id));
 
 	return next();
 };
@@ -214,10 +223,7 @@ const checkEmailQueueAuth = async function (c, next) {
 		if (token.startsWith('refresh_')) {
 			// Attempt to refresh the token
 			try {
-				const refreshResult = await refreshAccessToken(
-					token,
-					CLERK_PRIVATE_KEY
-				);
+				const refreshResult = await refreshAccessToken(token, CLERK_PRIVATE_KEY);
 				token = refreshResult.accessToken;
 				// Store refreshed token for use in endpoint
 				c.set('refreshedToken', token);
@@ -345,11 +351,97 @@ app.use(
 	})
 );
 
-// Mount towers routes
+// Mount more specific routes FIRST (before general tower routes)
+// This ensures /reports and /issues routes are matched before the generic /towers route
+
+// Mount tower reports routes (more specific)
+app.route('/api/clubs/:clubId/towers/:towerId/reports', towerReportsRouter);
+
+// Mount issues routes (more specific)
+app.route('/api/clubs/:clubId/towers/:towerId/issues', issuesRouter);
+
+// Mount scheduled sessions routes
+app.route('/api/clubs/:clubId/scheduled-sessions', scheduledSessionsRouter);
+
+// Mount towers routes (general - must be last)
 app.route('/api/clubs/:clubId/towers', towersRouter);
 
-// Mount issues routes
-app.route('/api/clubs/:clubId/towers/:towerId/issues', issuesRouter);
+/**
+ * GET all tower reports for a club
+ * Route: GET /api/clubs/:clubId/reports
+ *
+ * Retrieves all reports from all towers within a specific club.
+ * This provides a club-level aggregation of all tower reports.
+ * Supports optional filtering by year and/or month.
+ *
+ * Query Parameters:
+ * - year (optional): Filter reports by year (e.g., 2024)
+ * - month (optional): Filter reports by month (1-12). Only applies if year is also provided.
+ *
+ * @example
+ * GET /api/clubs/789/reports - Get all reports for club 789
+ * GET /api/clubs/789/reports?year=2024 - Get reports from 2024
+ * GET /api/clubs/789/reports?year=2024&month=11 - Get reports from November 2024
+ */
+app.get('/api/clubs/:clubId/reports', checkAuth, checkUserPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const clubId = c.req.param('clubId');
+
+		if (!clubId) {
+			return c.json(
+				{
+					error: 'Missing club ID in route',
+				},
+				400
+			);
+		}
+
+		// Parse optional query parameters
+		const yearParam = c.req.query('year');
+		const monthParam = c.req.query('month');
+
+		const filters: { year?: number; month?: number } = {};
+
+		if (yearParam) {
+			const year = parseInt(yearParam, 10);
+			if (!isNaN(year)) {
+				filters.year = year;
+			}
+		}
+
+		if (monthParam) {
+			const month = parseInt(monthParam, 10);
+			if (!isNaN(month)) {
+				filters.month = month;
+			}
+		}
+
+		const result = await towerReportsModel.getTowerReportsByClubIdWithDateFilter(
+			db,
+			parseInt(clubId, 10),
+			Object.keys(filters).length > 0 ? filters : undefined
+		);
+		if (result.error) {
+			return c.json(
+				{
+					error: result.error,
+				},
+				400
+			);
+		}
+		return c.json({
+			result: result.data,
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : String(error),
+			},
+			400
+		);
+	}
+});
 
 app.get('/api/addresses/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
@@ -1210,7 +1302,7 @@ app.delete('/api/consists/:id', checkAuth, async (c) => {
 	);
 });
 
-app.get('/api/users/', checkAuth, async (c) => {
+app.get('/api/users', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const result = await usersModel.getAllUsersWithClubs(db);
@@ -1226,6 +1318,42 @@ app.get('/api/users/', checkAuth, async (c) => {
 
 		return c.json({
 			result: result.data,
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error,
+			},
+			400
+		);
+	}
+});
+
+app.get('/api/clubs/:id/users', checkAuth, checkUserPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const clubId = c.req.param('id');
+	try {
+		// Get all users assigned to this club
+		const result = await db
+			.select({
+				user: users,
+				clubs: usersToClubs,
+			})
+			.from(usersToClubs)
+			.innerJoin(users, eq(users.id, usersToClubs.user_id))
+			.where(eq(usersToClubs.club_id, parseInt(clubId, 10)));
+
+		if (!result) {
+			return c.json(
+				{
+					error: 'No users found for this club',
+				},
+				404
+			);
+		}
+
+		return c.json({
+			result: result,
 		});
 	} catch (error) {
 		return c.json(
@@ -1378,38 +1506,28 @@ app.post('/api/users/register', checkAuth, async (c) => {
 	}
 });
 
-app.post('/api/users/', checkAuth, checkUserPermission, async (c) => {
+app.post('/api/clubs/:id/users', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
-	const id = c.req.param('id');
+	const clubId = c.req.param('id');
 	const formattedData = await c.req.json();
 
-	const newUser = await usersModel.createUser(db, formattedData as usersModel.User);
+	try {
+		// Create new user
+		const newUser = await usersModel.createUser(db, formattedData as usersModel.User);
 
-	if (newUser.error) {
-		return c.json(
-			{
-				error: newUser.error,
-			},
-			400
-		);
-	}
-	return c.json(
-		{
-			created: true,
-			id: newUser.data[0].id,
-		},
-		200
-	);
-});
+		if (newUser.error) {
+			return c.json(
+				{
+					error: newUser.error,
+				},
+				400
+			);
+		}
 
-app.put('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
-	const db = dbInitalizer({ c });
-	const id = c.req.param('id');
-	const data = await c.req.json();
+		const userId = newUser.data[0].id;
 
-	// Handle club assignment if club_id is provided
-	if (data.club_id) {
-		const clubAssignment = await usersModel.assignClubToUser(db, id, data.club_id, data.permission);
+		// Automatically assign the user to the club
+		const clubAssignment = await usersModel.assignClubToUser(db, userId.toString(), clubId, formattedData.permission || 'member');
 
 		if (clubAssignment.error) {
 			return c.json(
@@ -1422,37 +1540,66 @@ app.put('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
 
 		return c.json(
 			{
-				assigned: true,
-				club_id: data.club_id,
-				data: clubAssignment.data,
+				created: true,
+				id: userId,
+				assigned_to_club: true,
+				club_id: parseInt(clubId, 10),
 			},
 			200
 		);
-	}
-
-	// Handle user update (token, permission)
-	const formattedData = { id: id, token: data.token, permission: data.permission };
-
-	const updatedUser = await usersModel.updateUser(db, id, formattedData as usersModel.User);
-
-	if (updatedUser.error) {
+	} catch (error) {
 		return c.json(
 			{
-				error: updatedUser.error,
+				error: error.message || 'Failed to create user',
 			},
 			400
 		);
 	}
-	return c.json(
-		{
-			updatedUser,
-		},
-		200
-	);
 });
 
-app.delete('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
+app.put('/api/clubs/:id/users/:userId/', checkAuth, checkUserPermission, async (c) => {
+	const db = dbInitalizer({ c });
+	const clubId = c.req.param('id');
+	const userId = c.req.param('userId');
+	const data = await c.req.json();
+
+	try {
+		// Update user's role/permission within the club
+		const clubAssignment = await usersModel.assignClubToUser(db, userId, clubId, data.permission);
+
+		if (clubAssignment.error) {
+			return c.json(
+				{
+					error: clubAssignment.error,
+				},
+				400
+			);
+		}
+
+		return c.json(
+			{
+				updated: true,
+				user_id: parseInt(userId, 10),
+				club_id: parseInt(clubId, 10),
+				permission: data.permission,
+				data: clubAssignment.data,
+			},
+			200
+		);
+	} catch (error) {
+		return c.json(
+			{
+				error: error.message || 'Failed to update user in club',
+			},
+			400
+		);
+	}
+});
+
+app.delete('/api/clubs/:id/users/:userId/', checkAuth, checkUserPermission, async (c) => {
 	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
+	const clubId = c.req.param('id');
+	const userId = c.req.param('userId');
 
 	const data = await c.req.json();
 	const deletedUser = await usersModel.deleteUser(CLERK_PRIVATE_KEY, data as usersModel.User);
@@ -1468,15 +1615,17 @@ app.delete('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
 	return c.json(
 		{
 			deleted: true,
+			user_id: parseInt(userId, 10),
+			club_id: parseInt(clubId, 10),
 		},
 		200
 	);
 });
 
-app.delete('/api/users/:id/clubs/:clubId', checkAuth, checkUserPermission, async (c) => {
+app.delete('/api/clubs/:clubId/users/:userId', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
-	const userId = c.req.param('id');
 	const clubId = c.req.param('clubId');
+	const userId = c.req.param('userId');
 
 	const result = await usersModel.removeClubFromUser(db, userId, clubId);
 
@@ -1530,14 +1679,9 @@ app.post('/api/clubs/:id/join', checkAuth, checkUserPermission, async (c) => {
 			);
 		}
 
-		// Find user in database by clerk ID
-		const userIdResult = await getUserIdFromClerkId(db, c.var.userId);
-
-		if (!userIdResult) {
-			return c.json({ error: 'User not found in database' }, 403);
-		}
-
-		const lhUserId = userIdResult.id;
+		// Use the already-retrieved database user ID from checkUserPermission middleware
+		// c.var.userId is now the database user ID, no need to look it up again
+		const lhUserId = c.var.userId;
 
 		// Get club ID from route parameter
 		const clubId = c.req.param('id');
@@ -1807,10 +1951,7 @@ app.post('/api/email-queue/', checkApiKey, checkEmailQueueAuth, async (c) => {
 
 		// Validate required fields
 		if (!body.recipient_email || !body.subject || !body.body) {
-			return c.json(
-				{ error: 'Missing required fields: recipient_email, subject, body' },
-				400
-			);
+			return c.json({ error: 'Missing required fields: recipient_email, subject, body' }, 400);
 		}
 
 		const result = await emailQueueModel.createEmail(db, {

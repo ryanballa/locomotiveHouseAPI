@@ -141,6 +141,41 @@
       "when": 1764031809535,
       "tag": "0019_cheerful_sentinel",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1732534800000,
+      "tag": "0020_add_owner_id_to_towers",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1764080685272,
+      "tag": "0021_sweet_hydra",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1764198058845,
+      "tag": "0022_gigantic_pestilence",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1764198304639,
+      "tag": "0023_quiet_daredevil",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1764199605670,
+      "tag": "0024_lush_black_tom",
+      "breakpoints": true
     }
   ]
 }

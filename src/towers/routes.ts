@@ -41,7 +41,7 @@ towersRouter.get('/', async (c) => {
 	} catch (error) {
 		return c.json(
 			{
-				error,
+				error: error instanceof Error ? error.message : String(error),
 			},
 			400
 		);
@@ -98,7 +98,7 @@ towersRouter.get('/:id', async (c) => {
 	} catch (error) {
 		return c.json(
 			{
-				error,
+				error: error instanceof Error ? error.message : String(error),
 			},
 			400
 		);
@@ -121,13 +121,14 @@ towersRouter.post('/', async (c) => {
 			);
 		}
 
-		// Set club_id from route parameter
-		const towerData = {
-			...data,
+		// Only allow specific fields for towers - prevent injection
+		const towerData: towersModel.Tower = {
+			name: data.name,
 			club_id: parseInt(clubId, 10),
+			description: data.description || undefined,
 		};
 
-		const result = await towersModel.createTower(db, towerData as towersModel.Tower);
+		const result = await towersModel.createTower(db, towerData);
 		if (result.error) {
 			return c.json(
 				{
@@ -147,7 +148,7 @@ towersRouter.post('/', async (c) => {
 	} catch (error) {
 		return c.json(
 			{
-				error,
+				error: error instanceof Error ? error.message : String(error),
 			},
 			400
 		);
@@ -214,7 +215,7 @@ towersRouter.put('/:id', async (c) => {
 	} catch (error) {
 		return c.json(
 			{
-				error,
+				error: error instanceof Error ? error.message : String(error),
 			},
 			400
 		);
@@ -273,7 +274,7 @@ towersRouter.delete('/:id', async (c) => {
 	} catch (error) {
 		return c.json(
 			{
-				error,
+				error: error instanceof Error ? error.message : String(error),
 			},
 			400
 		);

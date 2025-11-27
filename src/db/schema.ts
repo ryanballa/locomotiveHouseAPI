@@ -70,6 +70,8 @@ export const appointments = pgTable('appointments', {
 	user_id: integer('user_id')
 		.notNull()
 		.references(() => users.id),
+	scheduled_session_id: integer('scheduled_session_id')
+		.references(() => scheduledSessions.id),
 });
 
 export const inviteTokens = pgTable('invite_tokens', {
@@ -90,6 +92,23 @@ export const towers = pgTable('towers', {
 		.notNull()
 		.references(() => clubs.id),
 	description: text('description'),
+	owner_id: integer('owner_id')
+		.notNull()
+		.references(() => users.id),
+	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+	updated_at: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+});
+
+export const towerReports = pgTable('tower_reports', {
+	id: serial('id').primaryKey().notNull(),
+	tower_id: integer('tower_id')
+		.notNull()
+		.references(() => towers.id),
+	user_id: integer('user_id')
+		.notNull()
+		.references(() => users.id),
+	description: text('description'),
+	report_at: timestamp('report_at', { mode: 'date' }).notNull().defaultNow(),
 	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
 });
@@ -124,4 +143,13 @@ export const emailQueue = pgTable('email_queue', {
 	sent_at: timestamp('sent_at', { mode: 'date' }),
 	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
+});
+
+export const scheduledSessions = pgTable('scheduled_sessions', {
+	id: serial('id').primaryKey().notNull(),
+	schedule: timestamp('schedule', { mode: 'date' }).notNull(),
+	club_id: integer('club_id')
+		.notNull()
+		.references(() => clubs.id),
+	description: text('description'),
 });

@@ -7,6 +7,7 @@ export interface Appointment {
 	schedule: Date;
 	duration: number;
 	user_id: number;
+	scheduled_session_id?: number | null;
 }
 
 export interface Result {
@@ -26,13 +27,19 @@ export const createAppointment = async (db: NeonHttpDatabase<Record<string, neve
 	}
 
 	try {
+		const values: any = {
+			schedule: new Date(data.schedule),
+			duration: data.duration,
+			user_id: data.user_id,
+		};
+
+		if (data.scheduled_session_id) {
+			values.scheduled_session_id = data.scheduled_session_id;
+		}
+
 		const results = await db
 			.insert(appointments)
-			.values({
-				schedule: new Date(data.schedule),
-				duration: data.duration,
-				user_id: data.user_id,
-			})
+			.values(values)
 			.returning();
 
 		return { data: results };
@@ -57,12 +64,18 @@ export const updateAppointment = async (db: NeonHttpDatabase<Record<string, neve
 	const scheduleDate = new Date(data.schedule);
 
 	try {
+		const updateData: any = {
+			schedule: scheduleDate,
+			duration: data.duration,
+		};
+
+		if (data.scheduled_session_id !== undefined) {
+			updateData.scheduled_session_id = data.scheduled_session_id;
+		}
+
 		const results = await db
 			.update(appointments)
-			.set({
-				schedule: scheduleDate,
-				duration: data.duration,
-			})
+			.set(updateData)
 			.where(eq(appointments.id, parseInt(id, 10)))
 			.returning();
 		return { data: results };
@@ -106,6 +119,7 @@ export const getAppointmentsByClubId = async (db: NeonHttpDatabase<Record<string
 				schedule: appointments.schedule,
 				duration: appointments.duration,
 				user_id: appointments.user_id,
+				scheduled_session_id: appointments.scheduled_session_id,
 			})
 			.from(appointments)
 			.innerJoin(usersToClubs, eq(appointments.user_id, usersToClubs.user_id))
