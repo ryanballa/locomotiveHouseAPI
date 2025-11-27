@@ -29,6 +29,8 @@ export const clubs = pgTable('clubs', {
 export const users = pgTable('users', {
 	id: serial('id').primaryKey().notNull(),
 	token: text('token').notNull(),
+	first_name: text('first_name'),
+	last_name: text('last_name'),
 	permission: integer('permission_id').references(() => permissions.id),
 });
 export const ClubsRelations = relations(clubs, ({ many }) => ({
@@ -70,8 +72,7 @@ export const appointments = pgTable('appointments', {
 	user_id: integer('user_id')
 		.notNull()
 		.references(() => users.id),
-	scheduled_session_id: integer('scheduled_session_id')
-		.references(() => scheduledSessions.id),
+	scheduled_session_id: integer('scheduled_session_id').references(() => scheduledSessions.id),
 });
 
 export const inviteTokens = pgTable('invite_tokens', {
@@ -152,4 +153,16 @@ export const scheduledSessions = pgTable('scheduled_sessions', {
 		.notNull()
 		.references(() => clubs.id),
 	description: text('description'),
+});
+
+export const notices = pgTable('notices', {
+	id: serial('id').primaryKey().notNull(),
+	club_id: integer('club_id')
+		.notNull()
+		.references(() => clubs.id),
+	description: text('description').notNull(),
+	type: text('type'),
+	expires_at: timestamp('expires_at', { mode: 'date' }),
+	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
+	updated_at: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),
 });

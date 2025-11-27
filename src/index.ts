@@ -18,6 +18,8 @@ import { towersRouter } from './towers/routes';
 import { issuesRouter } from './issues/routes';
 import { towerReportsRouter } from './towerReports/routes';
 import { scheduledSessionsRouter } from './scheduledSessions/routes';
+import { noticesRouter } from './notices/routes';
+import { usersRouter, clubUsersRouter } from './users/routes';
 import * as towerReportsModel from './towerReports/model';
 import { cors } from 'hono/cors';
 import { eq, and } from 'drizzle-orm';
@@ -351,6 +353,10 @@ app.use(
 	})
 );
 
+// Mount users routes
+app.route('/api/users', usersRouter);
+app.route('/api/clubs/:clubId/users', clubUsersRouter);
+
 // Mount more specific routes FIRST (before general tower routes)
 // This ensures /reports and /issues routes are matched before the generic /towers route
 
@@ -362,6 +368,9 @@ app.route('/api/clubs/:clubId/towers/:towerId/issues', issuesRouter);
 
 // Mount scheduled sessions routes
 app.route('/api/clubs/:clubId/scheduled-sessions', scheduledSessionsRouter);
+
+// Mount notices routes
+app.route('/api/clubs/:clubId/notices', noticesRouter);
 
 // Mount towers routes (general - must be last)
 app.route('/api/clubs/:clubId/towers', towersRouter);
@@ -463,7 +472,7 @@ app.get('/api/addresses/', checkAuth, async (c) => {
 app.post('/api/addresses/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
-	const clerkUserId = c.var.userId;
+	const clerkUserId = c.var.clerkUserId;
 
 	// Validate required fields
 	if (!data.club_id) {
@@ -565,7 +574,7 @@ app.put('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
 	try {
 		const id = c.req.param('id');
 		const data = await c.req.json();
-		const clerkUserId = c.var.userId;
+		const clerkUserId = c.var.clerkUserId;
 
 		// Validate required fields
 		if (!data.club_id) {
@@ -679,7 +688,7 @@ app.put('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
 app.delete('/api/addresses/:id', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
-	const clerkUserId = c.var.userId;
+	const clerkUserId = c.var.clerkUserId;
 
 	// Find user in database by clerk ID
 	const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
@@ -1302,471 +1311,6 @@ app.delete('/api/consists/:id', checkAuth, async (c) => {
 	);
 });
 
-app.get('/api/users', checkAuth, async (c) => {
-	const db = dbInitalizer({ c });
-	try {
-		const result = await usersModel.getAllUsersWithClubs(db);
-
-		if (result.error) {
-			return c.json(
-				{
-					error: result.error,
-				},
-				400
-			);
-		}
-
-		return c.json({
-			result: result.data,
-		});
-	} catch (error) {
-		return c.json(
-			{
-				error,
-			},
-			400
-		);
-	}
-});
-
-app.get('/api/clubs/:id/users', checkAuth, checkUserPermission, async (c) => {
-	const db = dbInitalizer({ c });
-	const clubId = c.req.param('id');
-	try {
-		// Get all users assigned to this club
-		const result = await db
-			.select({
-				user: users,
-				clubs: usersToClubs,
-			})
-			.from(usersToClubs)
-			.innerJoin(users, eq(users.id, usersToClubs.user_id))
-			.where(eq(usersToClubs.club_id, parseInt(clubId, 10)));
-
-		if (!result) {
-			return c.json(
-				{
-					error: 'No users found for this club',
-				},
-				404
-			);
-		}
-
-		return c.json({
-			result: result,
-		});
-	} catch (error) {
-		return c.json(
-			{
-				error,
-			},
-			400
-		);
-	}
-});
-
-app.get('/api/users/me', checkAuth, async (c) => {
-	const db = dbInitalizer({ c });
-	const clerkUserId = c.var.userId;
-
-	try {
-		// Get user by their Clerk ID (stored in token field)
-		const result = await usersModel.getUser(db, clerkUserId);
-
-		if (!result.data || result.data.length === 0) {
-			return c.json(
-				{
-					error: 'User not found',
-				},
-				401
-			);
-		}
-
-		const user = result.data[0];
-
-		// Get user's club assignments
-		const userWithClubs = await usersModel.getUserWithClubs(db, user.id);
-
-		return c.json({
-			user: {
-				...user,
-				clubs: userWithClubs?.clubs || [],
-			},
-		});
-	} catch (error) {
-		return c.json(
-			{
-				error: 'Failed to fetch user',
-			},
-			500
-		);
-	}
-});
-
-app.get('/api/users/:id/', checkAuth, checkUserPermission, async (c) => {
-	const db = dbInitalizer({ c });
-	try {
-		const id = c.req.param('id');
-		const userWithClubs = await usersModel.getUserWithClubs(db, parseInt(id, 10));
-
-		if (!userWithClubs) {
-			return c.json(
-				{
-					error: 'User not found',
-				},
-				404
-			);
-		}
-
-		return c.json({
-			user: userWithClubs.user,
-			clubs: userWithClubs.clubs,
-		});
-	} catch (error) {
-		return c.json(
-			{
-				error,
-			},
-			400
-		);
-	}
-});
-
-// Auto-register endpoint for first-time sign-in (no permission check needed)
-app.post('/api/users/register', checkAuth, async (c) => {
-	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
-	const db = dbInitalizer({ c });
-	const clerkUserId = c.var.userId;
-	const clerkClient = await createClerkClient({ secretKey: CLERK_PRIVATE_KEY });
-
-	try {
-		// Check if user already exists in database
-		const existingUsers = await db.select().from(users).where(eq(users.token, clerkUserId));
-
-		if (existingUsers.length > 0) {
-			// User already exists, return their ID
-			const user = existingUsers[0];
-
-			// Update Clerk metadata if not already set
-			const clerkUser = await clerkClient.users.getUser(clerkUserId);
-			if (!clerkUser.privateMetadata.lhUserId) {
-				await clerkClient.users.updateUserMetadata(clerkUserId, {
-					privateMetadata: {
-						lhUserId: user.id,
-					},
-				});
-			}
-
-			return c.json({
-				created: false,
-				id: user.id,
-				message: 'User already exists',
-			});
-		}
-
-		// Create new user
-		const formattedData = await c.req.json();
-
-		const newUser = await usersModel.createUser(db, formattedData as usersModel.User);
-
-		if (newUser.error) {
-			console.error('User creation error:', newUser.error);
-			return c.json(
-				{
-					error: newUser.error,
-				},
-				400
-			);
-		}
-
-		const userId = newUser.data[0].id;
-
-		// Update Clerk user metadata with the new lhUserId
-		await clerkClient.users.updateUserMetadata(clerkUserId, {
-			privateMetadata: {
-				lhUserId: userId,
-			},
-		});
-
-		return c.json(
-			{
-				created: true,
-				id: userId,
-			},
-			200
-		);
-	} catch (error) {
-		console.error('Register endpoint error:', error);
-		return c.json(
-			{
-				error: error.message || 'Failed to register user',
-			},
-			500
-		);
-	}
-});
-
-app.post('/api/clubs/:id/users', checkAuth, checkUserPermission, async (c) => {
-	const db = dbInitalizer({ c });
-	const clubId = c.req.param('id');
-	const formattedData = await c.req.json();
-
-	try {
-		// Create new user
-		const newUser = await usersModel.createUser(db, formattedData as usersModel.User);
-
-		if (newUser.error) {
-			return c.json(
-				{
-					error: newUser.error,
-				},
-				400
-			);
-		}
-
-		const userId = newUser.data[0].id;
-
-		// Automatically assign the user to the club
-		const clubAssignment = await usersModel.assignClubToUser(db, userId.toString(), clubId, formattedData.permission || 'member');
-
-		if (clubAssignment.error) {
-			return c.json(
-				{
-					error: clubAssignment.error,
-				},
-				400
-			);
-		}
-
-		return c.json(
-			{
-				created: true,
-				id: userId,
-				assigned_to_club: true,
-				club_id: parseInt(clubId, 10),
-			},
-			200
-		);
-	} catch (error) {
-		return c.json(
-			{
-				error: error.message || 'Failed to create user',
-			},
-			400
-		);
-	}
-});
-
-app.put('/api/clubs/:id/users/:userId/', checkAuth, checkUserPermission, async (c) => {
-	const db = dbInitalizer({ c });
-	const clubId = c.req.param('id');
-	const userId = c.req.param('userId');
-	const data = await c.req.json();
-
-	try {
-		// Update user's role/permission within the club
-		const clubAssignment = await usersModel.assignClubToUser(db, userId, clubId, data.permission);
-
-		if (clubAssignment.error) {
-			return c.json(
-				{
-					error: clubAssignment.error,
-				},
-				400
-			);
-		}
-
-		return c.json(
-			{
-				updated: true,
-				user_id: parseInt(userId, 10),
-				club_id: parseInt(clubId, 10),
-				permission: data.permission,
-				data: clubAssignment.data,
-			},
-			200
-		);
-	} catch (error) {
-		return c.json(
-			{
-				error: error.message || 'Failed to update user in club',
-			},
-			400
-		);
-	}
-});
-
-app.delete('/api/clubs/:id/users/:userId/', checkAuth, checkUserPermission, async (c) => {
-	const { CLERK_PRIVATE_KEY } = env<{ CLERK_PRIVATE_KEY: string }>(c, 'workerd');
-	const clubId = c.req.param('id');
-	const userId = c.req.param('userId');
-
-	const data = await c.req.json();
-	const deletedUser = await usersModel.deleteUser(CLERK_PRIVATE_KEY, data as usersModel.User);
-
-	if (deletedUser.error) {
-		return c.json(
-			{
-				error: deletedUser.error,
-			},
-			400
-		);
-	}
-	return c.json(
-		{
-			deleted: true,
-			user_id: parseInt(userId, 10),
-			club_id: parseInt(clubId, 10),
-		},
-		200
-	);
-});
-
-app.delete('/api/clubs/:clubId/users/:userId', checkAuth, checkUserPermission, async (c) => {
-	const db = dbInitalizer({ c });
-	const clubId = c.req.param('clubId');
-	const userId = c.req.param('userId');
-
-	const result = await usersModel.removeClubFromUser(db, userId, clubId);
-
-	if (result.error) {
-		return c.json(
-			{
-				error: result.error,
-			},
-			400
-		);
-	}
-
-	return c.json(
-		{
-			removed: true,
-			user_id: parseInt(userId, 10),
-			club_id: parseInt(clubId, 10),
-		},
-		200
-	);
-});
-
-app.post('/api/clubs/:id/join', checkAuth, checkUserPermission, async (c) => {
-	const db = dbInitalizer({ c });
-	const { CLERK_PRIVATE_KEY } = env<{
-		CLERK_PRIVATE_KEY: string;
-	}>(c, 'workerd');
-
-	try {
-		// Get invite token from query parameter
-		const inviteToken = c.req.query('invite');
-
-		if (!inviteToken) {
-			return c.json(
-				{
-					error: 'Missing invite token',
-				},
-				400
-			);
-		}
-
-		// Validate invite token
-		const tokenValidation = await inviteTokensModel.validateInviteToken(db, inviteToken);
-
-		if (tokenValidation.error) {
-			return c.json(
-				{
-					error: tokenValidation.error,
-				},
-				400
-			);
-		}
-
-		// Use the already-retrieved database user ID from checkUserPermission middleware
-		// c.var.userId is now the database user ID, no need to look it up again
-		const lhUserId = c.var.userId;
-
-		// Get club ID from route parameter
-		const clubId = c.req.param('id');
-
-		if (!clubId) {
-			return c.json(
-				{
-					error: 'Missing club ID',
-				},
-				400
-			);
-		}
-
-		// Verify the invite token is for the correct club
-		if (tokenValidation.data?.club_id !== parseInt(clubId, 10)) {
-			return c.json(
-				{
-					error: 'Invalid invite token for this club',
-				},
-				400
-			);
-		}
-
-		// Verify club exists
-		const clubResult = await db
-			.select()
-			.from(clubs)
-			.where(eq(clubs.id, parseInt(clubId, 10)));
-
-		if (clubResult.length === 0) {
-			return c.json(
-				{
-					error: 'Club not found',
-				},
-				404
-			);
-		}
-
-		// Get the role permission from invite token
-		const rolePermission = tokenValidation.data?.role_permission;
-
-		// Optionally get rolePermission from request body as well (for overrides)
-		let requestBodyRolePermission;
-		try {
-			const body = await c.req.json().catch(() => ({}));
-			requestBodyRolePermission = body.rolePermission || body.role_permission;
-		} catch {
-			// Body is optional
-		}
-
-		// Use body role permission if provided, otherwise use invite token role permission
-		const finalRolePermission = requestBodyRolePermission ? parseInt(requestBodyRolePermission, 10) : rolePermission;
-
-		// Assign user to club with optional role permission
-		const assignmentResult = await usersModel.assignClubToUser(db, lhUserId.toString(), parseInt(clubId, 10), finalRolePermission);
-
-		if (assignmentResult.error) {
-			return c.json(
-				{
-					error: assignmentResult.error,
-				},
-				400
-			);
-		}
-
-		return c.json(
-			{
-				joined: true,
-				club_id: parseInt(clubId, 10),
-				user_id: lhUserId,
-				club_name: clubResult[0].name,
-				role_assigned: finalRolePermission || null,
-			},
-			200
-		);
-	} catch (error) {
-		console.error('Error joining club:', error);
-		return c.json(
-			{
-				error: 'Failed to join club',
-			},
-			500
-		);
-	}
-});
 
 app.get('/api/appointments/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
@@ -1813,7 +1357,7 @@ app.put('/api/appointments/:id', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
 	const data = await c.req.json();
-	const clerkUserId = c.var.userId;
+	const clerkUserId = c.var.clerkUserId;
 
 	// Find user in database by clerk ID
 	const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
@@ -1870,7 +1414,7 @@ app.put('/api/appointments/:id', checkAuth, checkUserPermission, async (c) => {
 app.delete('/api/appointments/:id', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const id = c.req.param('id');
-	const clerkUserId = c.var.userId;
+	const clerkUserId = c.var.clerkUserId;
 
 	// Find user in database by clerk ID
 	const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
@@ -2188,3 +1732,6 @@ app.post('/api/webhooks/', async (c) => {
 });
 
 export default app;
+
+// Export app type for client type generation
+export type AppType = typeof app;
