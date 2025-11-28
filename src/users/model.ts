@@ -5,6 +5,8 @@ import { eq, and } from 'drizzle-orm';
 export interface User {
 	id: number;
 	token: string;
+	first_name?: string;
+	last_name?: string;
 	permission: number;
 }
 
@@ -51,6 +53,8 @@ export const createUser = async (db: NeonHttpDatabase<Record<string, never>>, da
 			.insert(users)
 			.values({
 				token: data.token,
+				first_name: data.first_name,
+				last_name: data.last_name,
 				permission: data.permission,
 			})
 			.returning();
@@ -83,8 +87,10 @@ export const updateUser = async (db: NeonHttpDatabase<Record<string, never>>, id
 		const results = await db
 			.update(users)
 			.set({
-				permission: data.permission,
 				token: data.token,
+				first_name: data.first_name,
+				last_name: data.last_name,
+				permission: data.permission,
 			})
 			.where(eq(users.id, parseInt(id, 10)))
 			.returning();

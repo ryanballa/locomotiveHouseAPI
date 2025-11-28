@@ -176,6 +176,27 @@
       "when": 1764199605670,
       "tag": "0024_lush_black_tom",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1764258643226,
+      "tag": "0025_mixed_pestilence",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1764272284365,
+      "tag": "0026_smart_pride",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "6",
+      "when": 1764273472459,
+      "tag": "0027_daffy_micromacro",
+      "breakpoints": true
     }
   ]
 }
