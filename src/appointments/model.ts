@@ -131,3 +131,28 @@ export const getAppointmentsByClubId = async (db: NeonHttpDatabase<Record<string
 		};
 	}
 };
+
+export const getAppointmentsByScheduledSessionId = async (db: NeonHttpDatabase<Record<string, never>>, sessionId: string): Promise<Result> => {
+	if (!sessionId)
+		return {
+			error: 'Missing session ID',
+		};
+
+	try {
+		const results = await db
+			.select({
+				id: appointments.id,
+				schedule: appointments.schedule,
+				duration: appointments.duration,
+				user_id: appointments.user_id,
+				scheduled_session_id: appointments.scheduled_session_id,
+			})
+			.from(appointments)
+			.where(eq(appointments.scheduled_session_id, parseInt(sessionId, 10)));
+		return { data: results };
+	} catch (error) {
+		return {
+			error,
+		};
+	}
+};

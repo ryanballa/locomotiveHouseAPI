@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import * as scheduledSessionsModel from './model';
+import * as appointmentsModel from '../appointments/model';
 import { dbInitalizer } from '../utils/db';
 import { checkAuth, checkUserPermission } from '../utils/auth';
 import type { Env } from '../index';
@@ -327,6 +328,78 @@ scheduledSessionsRouter.delete('/:sessionId', async (c) => {
 
 		return c.json({
 			deleted: true,
+		});
+	} catch (error) {
+		return c.json(
+			{
+				error: error instanceof Error ? error.message : String(error),
+			},
+			400
+		);
+	}
+});
+
+/**
+ * GET /api/clubs/:clubId/scheduled-sessions/:sessionId/appointments
+ * Retrieve all appointments for a specific scheduled session
+ */
+scheduledSessionsRouter.get('/:sessionId/appointments', async (c) => {
+	const db = dbInitalizer({ c });
+	try {
+		const sessionId = c.req.param('sessionId');
+		const clubId = c.req.param('clubId');
+
+		if (!sessionId) {
+			return c.json(
+				{
+					error: 'Missing session ID',
+				},
+				400
+			);
+		}
+
+		if (!clubId) {
+			return c.json(
+				{
+					error: 'Missing club ID in route',
+				},
+				400
+			);
+		}
+
+		// Verify session belongs to this club
+		const sessionCheck = await scheduledSessionsModel.getScheduledSessionById(db, sessionId);
+		if (sessionCheck.error || !sessionCheck.data || sessionCheck.data.length === 0) {
+			return c.json(
+				{
+					error: 'Scheduled session not found',
+				},
+				404
+			);
+		}
+
+		const session = sessionCheck.data[0];
+		if (session.club_id !== parseInt(clubId, 10)) {
+			return c.json(
+				{
+					error: 'Scheduled session not found in this club',
+				},
+				404
+			);
+		}
+
+		const result = await appointmentsModel.getAppointmentsByScheduledSessionId(db, sessionId);
+		if (result.error) {
+			return c.json(
+				{
+					error: result.error,
+				},
+				400
+			);
+		}
+
+		return c.json({
+			appointments: result.data || [],
 		});
 	} catch (error) {
 		return c.json(
