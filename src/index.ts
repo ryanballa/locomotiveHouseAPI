@@ -909,7 +909,7 @@ app.get('/api/clubs/invite/validate', checkAuth, checkUserPermission, async (c) 
 	}
 });
 
-app.get('/api/clubs/:id', checkAuth, checkAdminPermission, async (c) => {
+app.get('/api/clubs/:id', async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const id = c.req.param('id');

@@ -15,7 +15,10 @@ scheduledSessionsRouter.use(checkUserPermission);
  * GET /api/clubs/:id/scheduled-sessions
  * Retrieve all scheduled sessions for a specific club
  */
-scheduledSessionsRouter.get('/', async (c) => {
+scheduledSessionsRouter.get('/', (c, next) => {
+	// Skip auth middleware for this route
+	return next();
+}, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const clubId = c.req.param('clubId');
