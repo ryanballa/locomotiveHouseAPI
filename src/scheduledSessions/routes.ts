@@ -7,18 +7,12 @@ import type { Env } from '../index';
 
 export const scheduledSessionsRouter = new Hono<{ Bindings: Env }>();
 
-// Apply auth middleware to all routes
-scheduledSessionsRouter.use(checkAuth);
-scheduledSessionsRouter.use(checkUserPermission);
-
 /**
  * GET /api/clubs/:id/scheduled-sessions
  * Retrieve all scheduled sessions for a specific club
+ * PUBLIC ROUTE - no authentication required
  */
-scheduledSessionsRouter.get('/', (c, next) => {
-	// Skip auth middleware for this route
-	return next();
-}, async (c) => {
+scheduledSessionsRouter.get('/', async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const clubId = c.req.param('clubId');
@@ -58,7 +52,7 @@ scheduledSessionsRouter.get('/', (c, next) => {
  * GET /api/clubs/:id/scheduled-sessions/:sessionId
  * Retrieve a specific scheduled session by ID
  */
-scheduledSessionsRouter.get('/:sessionId', async (c) => {
+scheduledSessionsRouter.get('/:sessionId', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const sessionId = c.req.param('sessionId');
@@ -129,7 +123,7 @@ scheduledSessionsRouter.get('/:sessionId', async (c) => {
  * POST /api/clubs/:id/scheduled-sessions
  * Create a new scheduled session in a club
  */
-scheduledSessionsRouter.post('/', async (c) => {
+scheduledSessionsRouter.post('/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const clubId = c.req.param('clubId');
@@ -192,7 +186,7 @@ scheduledSessionsRouter.post('/', async (c) => {
  * PUT /api/clubs/:id/scheduled-sessions/:sessionId
  * Update a scheduled session
  */
-scheduledSessionsRouter.put('/:sessionId', async (c) => {
+scheduledSessionsRouter.put('/:sessionId', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const sessionId = c.req.param('sessionId');
@@ -274,7 +268,7 @@ scheduledSessionsRouter.put('/:sessionId', async (c) => {
  * DELETE /api/clubs/:id/scheduled-sessions/:sessionId
  * Delete a scheduled session from a club
  */
-scheduledSessionsRouter.delete('/:sessionId', async (c) => {
+scheduledSessionsRouter.delete('/:sessionId', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const sessionId = c.req.param('sessionId');
@@ -346,7 +340,7 @@ scheduledSessionsRouter.delete('/:sessionId', async (c) => {
  * GET /api/clubs/:clubId/scheduled-sessions/:sessionId/appointments
  * Retrieve all appointments for a specific scheduled session
  */
-scheduledSessionsRouter.get('/:sessionId/appointments', async (c) => {
+scheduledSessionsRouter.get('/:sessionId/appointments', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const sessionId = c.req.param('sessionId');
