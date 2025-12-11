@@ -1,0 +1,1 @@
+ALTER TABLE "notices" ALTER COLUMN "is_pubic" DROP NOT NULL;

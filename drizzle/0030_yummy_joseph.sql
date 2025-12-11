@@ -1,0 +1,1 @@
+ALTER TABLE "notices" RENAME COLUMN "is_pubic" TO "is_public";

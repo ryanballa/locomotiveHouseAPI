@@ -9,6 +9,7 @@ import { notices } from '../db/schema';
  * @property {number} club_id - Club ID associated with the notice
  * @property {string} description - Notice description/content
  * @property {string} [type] - Type/category of the notice
+ * @property {boolean} [is_public] - Whether the notice is publicly visible
  * @property {Date} [expires_at] - Optional expiration date for the notice
  * @property {Date} [created_at] - Timestamp when the notice was created
  * @property {Date} [updated_at] - Timestamp when the notice was last updated
@@ -18,6 +19,7 @@ export interface Notice {
 	club_id: number;
 	description: string;
 	type?: string | null;
+	is_public?: boolean | null;
 	expires_at?: Date | null;
 	created_at?: Date;
 	updated_at?: Date;
@@ -140,6 +142,7 @@ export const createNotice = async (
 				club_id: data.club_id,
 				description: data.description,
 				type: data.type || null,
+				is_public: data.is_public || null,
 				expires_at: data.expires_at || null,
 			})
 			.returning();
@@ -188,11 +191,47 @@ export const updateNotice = async (
 				club_id: data.club_id,
 				description: data.description,
 				type: data.type || null,
+				is_public: data.is_public || null,
 				expires_at: data.expires_at || null,
 				updated_at: new Date(),
 			})
 			.where(eq(notices.id, parseInt(id.toString(), 10)))
 			.returning();
+		return { data: results };
+	} catch (error) {
+		return {
+			error,
+		};
+	}
+};
+
+/**
+ * Fetch all public notices for a specific club
+ *
+ * @async
+ * @param {NeonHttpDatabase} db - Database instance
+ * @param {number} clubId - The club ID to fetch public notices for
+ * @returns {Promise<Result>} Result object containing public notices array or error
+ *
+ * @example
+ * const result = await getPublicNoticesByClubId(db, 1);
+ * if (!result.error) {
+ *   console.log(result.data); // Array of public notices only
+ * }
+ */
+export const getPublicNoticesByClubId = async (
+	db: NeonHttpDatabase<Record<string, never>>,
+	clubId: number
+): Promise<Result> => {
+	if (!clubId)
+		return {
+			error: 'Missing club ID',
+		};
+	try {
+		const results = await db
+			.select()
+			.from(notices)
+			.where(eq(notices.club_id, clubId) && eq(notices.is_public, true));
 		return { data: results };
 	} catch (error) {
 		return {
