@@ -9,36 +9,40 @@ import type { Env } from '../index';
  * Handles all CRUD operations for notices within a club
  *
  * Routes:
- * - GET  /api/clubs/:clubId/notices      - Get all notices for a club
- * - GET  /api/clubs/:clubId/notices/:id  - Get a specific notice
- * - POST /api/clubs/:clubId/notices      - Create a new notice
- * - PUT  /api/clubs/:clubId/notices/:id  - Update a notice
- * - DELETE /api/clubs/:clubId/notices/:id - Delete a notice
+ * - GET  /api/clubs/:clubId/notices?public=true - Get public notices (no auth)
+ * - GET  /api/clubs/:clubId/notices             - Get all notices for a club (auth required)
+ * - GET  /api/clubs/:clubId/notices/:id         - Get a specific notice
+ * - POST /api/clubs/:clubId/notices             - Create a new notice
+ * - PUT  /api/clubs/:clubId/notices/:id         - Update a notice
+ * - DELETE /api/clubs/:clubId/notices/:id       - Delete a notice
  */
 export const noticesRouter = new Hono<{ Bindings: Env }>();
-
-// Apply auth middleware to all routes
-noticesRouter.use(checkAuth);
-noticesRouter.use(checkUserPermission);
 
 /**
  * GET all notices for a club
  *
- * Retrieves all notices associated with a specific club, including
- * those that have not yet expired.
+ * PUBLIC ROUTE when ?public=true query parameter is provided (no authentication required)
+ * Retrieves all notices associated with a specific club.
  *
- * @route GET /api/clubs/:clubId/notices
+ * @route GET /api/clubs/:clubId/notices?public=true (public, no auth)
+ * @route GET /api/clubs/:clubId/notices (requires authentication)
  * @param {string} clubId - Club ID (from route parameter)
+ * @param {string} [public] - Query parameter to get public notices only (no auth required)
  * @returns {object} Object containing array of notices
  *
  * @example
- * GET /api/clubs/1/notices
+ * GET /api/clubs/1/notices?public=true (no auth required)
+ * Response: { result: [{ id: 1, club_id: 1, description: "...", type: "alert", is_public: true, ... }] }
+ *
+ * @example
+ * GET /api/clubs/1/notices (requires auth)
  * Response: { result: [{ id: 1, club_id: 1, description: "...", type: "alert", ... }] }
  */
 noticesRouter.get('/', async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const clubId = c.req.param('clubId');
+		const isPublic = c.req.query('public');
 
 		if (!clubId) {
 			return c.json(
@@ -48,6 +52,30 @@ noticesRouter.get('/', async (c) => {
 				400
 			);
 		}
+
+		// PUBLIC ROUTE - no authentication required when public=true
+		if (isPublic === 'true') {
+			const result = await noticesModel.getPublicNoticesByClubId(db, parseInt(clubId, 10));
+			if (result.error) {
+				return c.json(
+					{
+						error: result.error,
+					},
+					400
+				);
+			}
+			return c.json({
+				result: result.data,
+			});
+		}
+
+		// PROTECTED ROUTE - authentication required
+		// Manually apply auth middleware for non-public requests
+		const authResult = await checkAuth(c, async () => {});
+		if (authResult) return authResult; // Auth failed, return error response
+
+		const permResult = await checkUserPermission(c, async () => {});
+		if (permResult) return permResult; // Permission check failed
 
 		const result = await noticesModel.getNoticesByClubId(db, parseInt(clubId, 10));
 		if (result.error) {
@@ -75,7 +103,7 @@ noticesRouter.get('/', async (c) => {
  * GET a specific notice by ID
  *
  * Retrieves a single notice by its ID, verifying it belongs
- * to the specified club.
+ * to the specified club. Requires authentication.
  *
  * @route GET /api/clubs/:clubId/notices/:id
  * @param {string} id - Notice ID (from route parameter)
@@ -86,7 +114,7 @@ noticesRouter.get('/', async (c) => {
  * GET /api/clubs/1/notices/5
  * Response: { notice: { id: 5, club_id: 1, description: "...", ... } }
  */
-noticesRouter.get('/:id', async (c) => {
+noticesRouter.get('/:id', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const id = c.req.param('id');
@@ -147,7 +175,7 @@ noticesRouter.get('/:id', async (c) => {
  *
  * Creates a new notice with the provided details. The club_id is
  * extracted from the route parameter to ensure the notice is
- * created in the correct club.
+ * created in the correct club. Requires authentication.
  *
  * @route POST /api/clubs/:clubId/notices
  * @param {string} clubId - Club ID (from route parameter)
@@ -166,7 +194,7 @@ noticesRouter.get('/:id', async (c) => {
  * }
  * Response: { created: true, id: 5 }
  */
-noticesRouter.post('/', async (c) => {
+noticesRouter.post('/', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const clubId = c.req.param('clubId');
@@ -221,7 +249,7 @@ noticesRouter.post('/', async (c) => {
  * PUT update an existing notice
  *
  * Updates notice details. Verifies the notice belongs to the
- * specified club before updating.
+ * specified club before updating. Requires authentication.
  *
  * @route PUT /api/clubs/:clubId/notices/:id
  * @param {string} id - Notice ID (from route parameter)
@@ -240,7 +268,7 @@ noticesRouter.post('/', async (c) => {
  * }
  * Response: { updated: true, notice: { id: 5, ... } }
  */
-noticesRouter.put('/:id', async (c) => {
+noticesRouter.put('/:id', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const id = c.req.param('id');
@@ -313,7 +341,7 @@ noticesRouter.put('/:id', async (c) => {
  * DELETE a notice from a club
  *
  * Deletes a notice by ID, verifying it belongs to the specified club
- * before deletion.
+ * before deletion. Requires authentication.
  *
  * @route DELETE /api/clubs/:clubId/notices/:id
  * @param {string} id - Notice ID (from route parameter)
@@ -324,7 +352,7 @@ noticesRouter.put('/:id', async (c) => {
  * DELETE /api/clubs/1/notices/5
  * Response: { deleted: true }
  */
-noticesRouter.delete('/:id', async (c) => {
+noticesRouter.delete('/:id', checkAuth, checkUserPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	try {
 		const id = c.req.param('id');
