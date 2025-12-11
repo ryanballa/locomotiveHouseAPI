@@ -162,6 +162,7 @@ export const notices = pgTable('notices', {
 		.references(() => clubs.id),
 	description: text('description').notNull(),
 	type: text('type'),
+	is_public: boolean('is_public'),
 	expires_at: timestamp('expires_at', { mode: 'date' }),
 	created_at: timestamp('created_at', { mode: 'date' }).notNull().defaultNow(),
 	updated_at: timestamp('updated_at', { mode: 'date' }).notNull().defaultNow(),

@@ -186,6 +186,7 @@ noticesRouter.post('/', async (c) => {
 			club_id: parseInt(clubId, 10),
 			description: data.description,
 			type: data.type || undefined,
+			is_public: data.is_public || undefined,
 			expires_at: data.expires_at ? new Date(data.expires_at) : undefined,
 		};
 
@@ -280,6 +281,7 @@ noticesRouter.put('/:id', async (c) => {
 			club_id: parseInt(clubId, 10),
 			description: data.description || noticeCheck.data[0].description,
 			type: data.type !== undefined ? data.type : noticeCheck.data[0].type,
+			is_public: data.is_public !== undefined ? data.is_public : noticeCheck.data[0].is_public,
 			expires_at: data.expires_at ? new Date(data.expires_at) : noticeCheck.data[0].expires_at,
 		};
 
