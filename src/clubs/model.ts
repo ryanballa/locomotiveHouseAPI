@@ -5,6 +5,8 @@ import { eq } from 'drizzle-orm';
 export interface Club {
 	id: number;
 	name: string;
+	description?: string | null;
+	hero_image?: string | null;
 }
 
 export interface ClubAssignment {
@@ -38,6 +40,8 @@ export const createClub = async (db: NeonHttpDatabase<Record<string, never>>, da
 			.insert(clubs)
 			.values({
 				name: data.name,
+				description: data.description,
+				hero_image: data.hero_image,
 			})
 			.returning();
 
@@ -65,6 +69,8 @@ export const updateClub = async (db: NeonHttpDatabase<Record<string, never>>, id
 			.update(clubs)
 			.set({
 				name: data.name,
+				description: data.description,
+				hero_image: data.hero_image,
 			})
 			.where(eq(clubs.id, parseInt(id, 10)))
 			.returning();
