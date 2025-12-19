@@ -3,7 +3,7 @@ import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 export default defineWorkersConfig({
 	build: {
-		sourcemap: 'hidden', // Source map generation must be turned on ("hidden", true, etc.)
+		sourcemap: 'inline', // Source map generation must be turned on ("hidden", true, etc.)
 	},
 	plugins: [
 		// Put the Sentry Vite plugin after all other plugins
