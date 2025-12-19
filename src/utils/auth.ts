@@ -38,7 +38,7 @@ export const checkAuth = async function (c: any, next: any) {
 	}>(c, 'workerd');
 
 	// Standard JWT authentication
-	const authHeader = c.req.raw.headers.get('authorization');
+	const authHeader = c.req.header('authorization');
 
 	if (!authHeader) {
 		console.log('No authorization header - returning 403');
@@ -54,13 +54,13 @@ export const checkAuth = async function (c: any, next: any) {
 		}
 
 		try {
-			let token: string | undefined;
-			const temp = authHeader.split('Bearer ');
-			if (!temp[1]) {
+			const match = authHeader?.match(/^Bearer\s+(.+)$/i);
+			const token = match?.[1];
+			if (!token) {
 				console.log('No Bearer token found - returning 403');
 				return c.json({ error: 'Unauthenticated' }, 403);
 			}
-			const bearerValue = temp[1];
+			const bearerValue = token;
 			const clerkClient = createClerkClient({
 				secretKey: CLERK_PRIVATE_KEY,
 			});
@@ -87,12 +87,14 @@ export const checkAuth = async function (c: any, next: any) {
 
 	try {
 		let token: string | undefined;
-		const temp = authHeader.split('Bearer ');
-		if (!temp[1]) {
+		const match = authHeader?.match(/^Bearer\s+(.+)$/i);
+		const tokenMatch = match?.[1];
+
+		if (!tokenMatch) {
 			console.log('No Bearer token found - returning 403');
 			return c.json({ error: 'Unauthenticated' }, 403);
 		}
-		const bearerValue = temp[1];
+		const bearerValue = tokenMatch;
 
 		// Try to parse as JSON first (legacy format: Bearer {"jwt":"token"})
 		try {
