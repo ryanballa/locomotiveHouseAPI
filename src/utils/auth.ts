@@ -1,14 +1,14 @@
-import { verifyToken } from '@clerk/backend';
+import { verifyToken, createClerkClient } from '@clerk/backend';
 import { env } from 'hono/adapter';
 import { dbInitalizer } from './db';
 import { users, permissions, usersToClubs } from '../db/schema';
 import { eq, and } from 'drizzle-orm';
 
 /**
- * Middleware to authenticate requests using Clerk JWT tokens.
+ * Middleware to authenticate requests using Clerk JWT tokens or M2M tokens.
  *
  * Validates the authorization header and verifies the JWT token against Clerk's private key.
- * Supports both direct JWT tokens and legacy JSON payload format.
+ * Supports both direct JWT tokens, legacy JSON payload format, and M2M tokens via X-API-Key header.
  * Sets the authenticated user's ID in the Hono context for use in downstream middleware/handlers.
  *
  * @param c - Hono context containing request and environment variables
@@ -25,15 +25,47 @@ import { eq, and } from 'drizzle-orm';
  * ```
  *
  * @throws Returns 403 error if:
- * - Authorization header is missing
+ * - Authorization header is missing (and X-API-Key is not provided)
  * - Bearer token is missing or malformed
  * - JWT verification fails
+ * - M2M token verification fails
  */
 export const checkAuth = async function (c: any, next: any) {
-	const { CLERK_PRIVATE_KEY } = env<{
+	const { CLERK_PRIVATE_KEY, CLERK_MACHINE_SECRET_KEY } = env<{
 		CLERK_PRIVATE_KEY: string;
+		CLERK_MACHINE_SECRET_KEY?: string;
 	}>(c, 'workerd');
 
+	// Check for M2M token in X-API-Key header
+	const apiKeyHeader = c.req.raw.headers.get('x-api-key');
+	if (apiKeyHeader) {
+		if (!CLERK_MACHINE_SECRET_KEY) {
+			return c.json({ error: 'M2M authentication not configured' }, 403);
+		}
+
+		try {
+			const clerkClient = createClerkClient({
+				secretKey: CLERK_MACHINE_SECRET_KEY,
+			});
+
+			const m2mToken = await clerkClient.m2m.verifyToken({ token: apiKeyHeader });
+
+			if (m2mToken.expired || m2mToken.revoked) {
+				return c.json({ error: 'Invalid or expired M2M token' }, 403);
+			}
+
+			// Set M2M context
+			c.set('isM2M', true);
+			c.set('m2mSubject', m2mToken.subject);
+			c.set('userId', 0); // M2M requests don't have a user ID
+			return next();
+		} catch (error) {
+			console.error('M2M auth error:', error.message || error);
+			return c.json({ error: 'Invalid M2M token' }, 403);
+		}
+	}
+
+	// Standard JWT authentication
 	const authHeader = c.req.raw.headers.get('authorization');
 
 	if (!authHeader) {
@@ -95,9 +127,10 @@ const hasAdminPermission = (permissionTitle: string | null | undefined): boolean
  * Middleware to check user permissions and club membership.
  *
  * Verifies that:
- * 1. The authenticated user exists in the database
+ * 1. The authenticated user exists in the database (unless M2M request)
  * 2. If user is not an admin, they must belong to the club specified in the `clubId` route parameter
  *
+ * M2M requests (identified by `isM2M` flag) bypass all permission checks.
  * Admins (with 'admin' or 'super-admin' permission) bypass club membership checks.
  * Non-admin users are restricted to clubs they are explicitly assigned to via the users_to_clubs table.
  *
@@ -113,6 +146,7 @@ const hasAdminPermission = (permissionTitle: string | null | undefined): boolean
  * app.use(checkUserPermission);
  * app.get('/api/clubs/:clubId/towers', (c) => {
  *   // User is authenticated and either:
+ *   // - Is an M2M request, OR
  *   // - Is an admin, OR
  *   // - Belongs to the specified club
  *   return c.json({ authorized: true });
@@ -126,19 +160,11 @@ const hasAdminPermission = (permissionTitle: string | null | undefined): boolean
 export const checkUserPermission = async function (c: any, next: any) {
 	const db = dbInitalizer({ c });
 	const clerkUserId = c.var.userId;
-	const SERVICE_ACCOUNT_USER_IDS = env<{ SERVICE_ACCOUNT_USER_IDS?: string }>(c, 'workerd').SERVICE_ACCOUNT_USER_IDS;
+	const isM2M = c.var.isM2M;
 
-	// Check if this is a service account (bypasses database lookup)
-	if (SERVICE_ACCOUNT_USER_IDS) {
-		const serviceAccountIds = SERVICE_ACCOUNT_USER_IDS.split(',').map((id: string) => id.trim());
-		if (serviceAccountIds.includes(clerkUserId)) {
-			// Store the Clerk ID for service accounts
-			c.set('clerkUserId', clerkUserId);
-			// Service accounts don't have a database user ID, use 0
-			c.set('userId', 0);
-			c.set('isServiceAccount', true);
-			return next();
-		}
+	// M2M requests bypass all permission checks
+	if (isM2M) {
+		return next();
 	}
 
 	// Find user in database by clerk ID with permissions
