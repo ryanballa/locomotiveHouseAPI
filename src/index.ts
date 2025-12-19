@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare';
 // src/index.ts
 import { Webhook } from 'svix';
 import { addresses, consists, clubs, usersToClubs, users, permissions, appointments, inviteTokens } from './db/schema';
@@ -1686,7 +1687,16 @@ app.post('/api/webhooks/', async (c) => {
 	);
 });
 
-export default app;
+export default Sentry.withSentry((env: Env) => {
+	const { id: versionId } = env.CF_VERSION_METADATA;
+	return {
+		dsn: 'https://dbe0f009be9647e1878b4452adaa2694@o820586.ingest.us.sentry.io/5809225',
+		release: versionId,
+		// Adds request headers and IP for users, for more info visit:
+		// https://docs.sentry.io/platforms/javascript/guides/cloudflare/configuration/options/#sendDefaultPii
+		sendDefaultPii: true,
+	};
+}, app);
 
 // Export app type for client type generation
 export type AppType = typeof app;
