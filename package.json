@@ -27,7 +27,7 @@
 		"wrangler": "^4.31.0"
 	},
 	"dependencies": {
-		"@clerk/backend": "^1.2.4",
+		"@clerk/backend": "^2.28.0",
 		"@neondatabase/serverless": "^0.9.3",
 		"drizzle-orm": "^0.30.10",
 		"hono": "^4.3.11",
