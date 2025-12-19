@@ -33,6 +33,7 @@ export const users = pgTable('users', {
 	token: text('token').notNull(),
 	first_name: text('first_name'),
 	last_name: text('last_name'),
+	email: text('email'),
 	permission: integer('permission_id').references(() => permissions.id),
 });
 export const ClubsRelations = relations(clubs, ({ many }) => ({
