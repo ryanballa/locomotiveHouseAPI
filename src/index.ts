@@ -19,6 +19,7 @@ import { issuesRouter } from './issues/routes';
 import { towerReportsRouter } from './towerReports/routes';
 import { scheduledSessionsRouter } from './scheduledSessions/routes';
 import { noticesRouter } from './notices/routes';
+import { applicationsRouter } from './applications/routes';
 import { usersRouter, clubUsersRouter } from './users/routes';
 import * as towerReportsModel from './towerReports/model';
 import { cors } from 'hono/cors';
@@ -408,6 +409,9 @@ app.route('/api/clubs/:clubId/scheduled-sessions', scheduledSessionsRouter);
 
 // Mount notices routes
 app.route('/api/clubs/:clubId/notices', noticesRouter);
+
+// Mount applications routes
+app.route('/api/clubs/:clubId/applications', applicationsRouter);
 
 // Mount towers routes (general - must be last)
 app.route('/api/clubs/:clubId/towers', towersRouter);
