@@ -45,12 +45,6 @@ export const checkAuth = async function (c: any, next: any) {
 		return c.json({ error: 'Unauthenticated' }, 403);
 	}
 
-	const temp = authHeader.split('Bearer ');
-	if (!temp[1]) {
-		console.log('No Bearer token found - returning 403');
-		return c.json({ error: 'Unauthenticated' }, 403);
-	}
-
 	// Check for M2M token in X-API-Key header
 	const apiKeyHeader = c.req.raw.headers.get('x-api-key');
 
@@ -61,6 +55,11 @@ export const checkAuth = async function (c: any, next: any) {
 
 		try {
 			let token: string | undefined;
+			const temp = authHeader.split('Bearer ');
+			if (!temp[1]) {
+				console.log('No Bearer token found - returning 403');
+				return c.json({ error: 'Unauthenticated' }, 403);
+			}
 			const bearerValue = temp[1];
 			const clerkClient = createClerkClient({
 				secretKey: CLERK_PRIVATE_KEY,
@@ -88,6 +87,11 @@ export const checkAuth = async function (c: any, next: any) {
 
 	try {
 		let token: string | undefined;
+		const temp = authHeader.split('Bearer ');
+		if (!temp[1]) {
+			console.log('No Bearer token found - returning 403');
+			return c.json({ error: 'Unauthenticated' }, 403);
+		}
 		const bearerValue = temp[1];
 
 		// Try to parse as JSON first (legacy format: Bearer {"jwt":"token"})
