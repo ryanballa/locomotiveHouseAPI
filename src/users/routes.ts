@@ -51,10 +51,17 @@ usersRouter.get('/', checkAuth, async (c) => {
  * @returns {Object} user - Current user object with their clubs
  */
 usersRouter.get('/me', checkAuth, async (c) => {
-	const db = dbInitalizer({ c });
-	const clerkUserId = c.var.userId;
-
 	try {
+		if (!c.env?.DATABASE_URL) {
+			console.error('[/me] Missing DATABASE_URL. env keys:', Object.keys(c.env ?? {}));
+			return c.json({ error: 'Server misconfigured' }, 500);
+		}
+
+		const db = dbInitalizer({ c });
+		const clerkUserId = c.var.userId;
+
+		console.log('[/me] clerkUserId:', clerkUserId);
+
 		// Get user by their Clerk ID (stored in token field)
 		const result = await usersModel.getUser(db, clerkUserId);
 

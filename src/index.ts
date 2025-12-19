@@ -282,7 +282,8 @@ app.use('/etag/*', etag());
 app.use(logger());
 
 app.onError((err, c) => {
-	console.error('Unhandled error:', err);
+	console.error('[onError]', err);
+	console.error('[onError stack]', (err as any)?.stack);
 	return c.json({ error: 'Internal Server Error' }, 500);
 });
 
