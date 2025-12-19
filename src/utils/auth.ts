@@ -126,6 +126,20 @@ const hasAdminPermission = (permissionTitle: string | null | undefined): boolean
 export const checkUserPermission = async function (c: any, next: any) {
 	const db = dbInitalizer({ c });
 	const clerkUserId = c.var.userId;
+	const SERVICE_ACCOUNT_USER_IDS = env<{ SERVICE_ACCOUNT_USER_IDS?: string }>(c, 'workerd').SERVICE_ACCOUNT_USER_IDS;
+
+	// Check if this is a service account (bypasses database lookup)
+	if (SERVICE_ACCOUNT_USER_IDS) {
+		const serviceAccountIds = SERVICE_ACCOUNT_USER_IDS.split(',').map((id: string) => id.trim());
+		if (serviceAccountIds.includes(clerkUserId)) {
+			// Store the Clerk ID for service accounts
+			c.set('clerkUserId', clerkUserId);
+			// Service accounts don't have a database user ID, use 0
+			c.set('userId', 0);
+			c.set('isServiceAccount', true);
+			return next();
+		}
+	}
 
 	// Find user in database by clerk ID with permissions
 	const userResult = await db

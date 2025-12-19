@@ -31,6 +31,7 @@ export type Env = {
 	CLERK_PRIVATE_KEY: string;
 	API_KEY: string;
 	ALLOWED_ORIGIN: string;
+	SERVICE_ACCOUNT_USER_IDS?: string; // Comma-separated list of Clerk user IDs for service accounts
 };
 
 //TODO break this file up
@@ -76,6 +77,7 @@ const checkAuth = async function (c, next) {
 		return next();
 	} catch (error) {
 		console.error('Auth error:', error.message || error);
+		console.error('Full error:', error);
 		return c.json({ error: 'Unauthenticated' }, 403);
 	}
 };
@@ -83,6 +85,20 @@ const checkAuth = async function (c, next) {
 const checkUserPermission = async function (c, next) {
 	const db = dbInitalizer({ c });
 	const clerkUserId = c.var.userId;
+	const { SERVICE_ACCOUNT_USER_IDS } = env<{ SERVICE_ACCOUNT_USER_IDS?: string }>(c, 'workerd');
+
+	// Check if this is a service account (bypasses database lookup)
+	if (SERVICE_ACCOUNT_USER_IDS) {
+		const serviceAccountIds = SERVICE_ACCOUNT_USER_IDS.split(',').map((id) => id.trim());
+		if (serviceAccountIds.includes(clerkUserId)) {
+			// Store the Clerk ID for service accounts
+			c.set('clerkUserId', clerkUserId);
+			// Service accounts don't have a database user ID, use 0 or null
+			c.set('userId', 0);
+			c.set('isServiceAccount', true);
+			return next();
+		}
+	}
 
 	// Find user in database by clerk ID
 	const userResult = await getUserIdFromClerkId(db, clerkUserId);
@@ -103,6 +119,15 @@ const checkUserPermission = async function (c, next) {
 const checkAdminPermission = async function (c, next) {
 	const db = dbInitalizer({ c });
 	const clerkUserId = c.var.userId;
+	const { SERVICE_ACCOUNT_USER_IDS } = env<{ SERVICE_ACCOUNT_USER_IDS?: string }>(c, 'workerd');
+
+	// Service accounts have admin-level access
+	if (SERVICE_ACCOUNT_USER_IDS) {
+		const serviceAccountIds = SERVICE_ACCOUNT_USER_IDS.split(',').map((id) => id.trim());
+		if (serviceAccountIds.includes(clerkUserId)) {
+			return next();
+		}
+	}
 
 	try {
 		// Find user in database by clerk ID
@@ -253,6 +278,15 @@ const checkClubAccess = async function (c, next) {
 	const db = dbInitalizer({ c });
 	const clerkUserId = c.var.userId;
 	const clubId = c.req.param('id');
+	const { SERVICE_ACCOUNT_USER_IDS } = env<{ SERVICE_ACCOUNT_USER_IDS?: string }>(c, 'workerd');
+
+	// Service accounts have access to all clubs
+	if (SERVICE_ACCOUNT_USER_IDS) {
+		const serviceAccountIds = SERVICE_ACCOUNT_USER_IDS.split(',').map((id) => id.trim());
+		if (serviceAccountIds.includes(clerkUserId)) {
+			return next();
+		}
+	}
 
 	try {
 		// Find user in database by clerk ID
@@ -342,9 +376,12 @@ app.use(
 	cors({
 		origin: (origin, c) => {
 			const { ALLOWED_ORIGIN } = env<{ ALLOWED_ORIGIN: string }>(c, 'workerd');
-			// Only allow requests from the configured origin
+			// Support comma-separated list of allowed origins
+			const allowedOrigins = ALLOWED_ORIGIN.split(',').map((o) => o.trim());
+
+			// Only allow requests from the configured origins
 			// Reject all other origins, including requests without an origin
-			if (origin === ALLOWED_ORIGIN) {
+			if (origin && allowedOrigins.includes(origin)) {
 				return origin;
 			}
 			return false;
@@ -1310,7 +1347,6 @@ app.delete('/api/consists/:id', checkAuth, async (c) => {
 		200
 	);
 });
-
 
 app.get('/api/appointments/', checkAuth, async (c) => {
 	const db = dbInitalizer({ c });
