@@ -25,6 +25,7 @@ import * as towerReportsModel from './towerReports/model';
 import { cors } from 'hono/cors';
 import { eq, and } from 'drizzle-orm';
 import { refreshAccessToken, extractRefreshToken } from './utils/tokenRefresh';
+import { checkAuth, checkUserPermission } from './utils/auth';
 
 export type Env = {
 	DATABASE_URL: string;
@@ -32,102 +33,18 @@ export type Env = {
 	CLERK_PRIVATE_KEY: string;
 	API_KEY: string;
 	ALLOWED_ORIGIN: string;
-	SERVICE_ACCOUNT_USER_IDS?: string; // Comma-separated list of Clerk user IDs for service accounts
 };
 
 //TODO break this file up
 
-const checkAuth = async function (c, next) {
-	const { CLERK_PRIVATE_KEY } = env<{
-		CLERK_PRIVATE_KEY: string;
-	}>(c, 'workerd');
-
-	const authHeader = c.req.raw.headers.get('authorization');
-
-	if (!authHeader) {
-		return c.json({ error: 'Unauthenticated' }, 403);
-	}
-
-	const temp = authHeader.split('Bearer ');
-	if (!temp[1]) {
-		return c.json({ error: 'Unauthenticated' }, 403);
-	}
-
-	try {
-		let token: string | undefined;
-		const bearerValue = temp[1];
-
-		// Try to parse as JSON first (legacy format: Bearer {"jwt":"token"})
-		try {
-			const payload = JSON.parse(bearerValue);
-			token = payload.jwt;
-		} catch {
-			// If not JSON, treat as direct JWT token (Bearer token)
-			token = bearerValue;
-		}
-
-		if (!token) {
-			return c.json({ error: 'Unauthenticated' }, 403);
-		}
-
-		const verification = await verifyToken(token, {
-			secretKey: CLERK_PRIVATE_KEY,
-		});
-
-		c.set('userId', verification.sub);
-		return next();
-	} catch (error) {
-		console.error('Auth error:', error.message || error);
-		console.error('Full error:', error);
-		return c.json({ error: 'Unauthenticated' }, 403);
-	}
-};
-
-const checkUserPermission = async function (c, next) {
-	const db = dbInitalizer({ c });
-	const clerkUserId = c.var.userId;
-	const { SERVICE_ACCOUNT_USER_IDS } = env<{ SERVICE_ACCOUNT_USER_IDS?: string }>(c, 'workerd');
-
-	// Check if this is a service account (bypasses database lookup)
-	if (SERVICE_ACCOUNT_USER_IDS) {
-		const serviceAccountIds = SERVICE_ACCOUNT_USER_IDS.split(',').map((id) => id.trim());
-		if (serviceAccountIds.includes(clerkUserId)) {
-			// Store the Clerk ID for service accounts
-			c.set('clerkUserId', clerkUserId);
-			// Service accounts don't have a database user ID, use 0 or null
-			c.set('userId', 0);
-			c.set('isServiceAccount', true);
-			return next();
-		}
-	}
-
-	// Find user in database by clerk ID
-	const userResult = await getUserIdFromClerkId(db, clerkUserId);
-
-	if (!userResult) {
-		return c.json({ error: 'User not found in database' }, 403);
-	}
-
-	// Store the Clerk ID separately before overwriting userId
-	c.set('clerkUserId', clerkUserId);
-	// Update userId to the database user ID (integer) for use in routes
-	// Explicitly convert to number to ensure it's not a string
-	c.set('userId', Number(userResult.id));
-
-	return next();
-};
-
 const checkAdminPermission = async function (c, next) {
 	const db = dbInitalizer({ c });
 	const clerkUserId = c.var.userId;
-	const { SERVICE_ACCOUNT_USER_IDS } = env<{ SERVICE_ACCOUNT_USER_IDS?: string }>(c, 'workerd');
+	const isM2M = c.var.isM2M;
 
-	// Service accounts have admin-level access
-	if (SERVICE_ACCOUNT_USER_IDS) {
-		const serviceAccountIds = SERVICE_ACCOUNT_USER_IDS.split(',').map((id) => id.trim());
-		if (serviceAccountIds.includes(clerkUserId)) {
-			return next();
-		}
+	// M2M requests have admin-level access
+	if (isM2M) {
+		return next();
 	}
 
 	try {
@@ -279,14 +196,11 @@ const checkClubAccess = async function (c, next) {
 	const db = dbInitalizer({ c });
 	const clerkUserId = c.var.userId;
 	const clubId = c.req.param('id');
-	const { SERVICE_ACCOUNT_USER_IDS } = env<{ SERVICE_ACCOUNT_USER_IDS?: string }>(c, 'workerd');
+	const isM2M = c.var.isM2M;
 
-	// Service accounts have access to all clubs
-	if (SERVICE_ACCOUNT_USER_IDS) {
-		const serviceAccountIds = SERVICE_ACCOUNT_USER_IDS.split(',').map((id) => id.trim());
-		if (serviceAccountIds.includes(clerkUserId)) {
-			return next();
-		}
+	// M2M requests have access to all clubs
+	if (isM2M) {
+		return next();
 	}
 
 	try {

@@ -31,24 +31,45 @@ import { eq, and } from 'drizzle-orm';
  * - M2M token verification fails
  */
 export const checkAuth = async function (c: any, next: any) {
+	console.log('checkAuth called for:', c.req.method, c.req.url);
 	const { CLERK_PRIVATE_KEY, CLERK_MACHINE_SECRET_KEY } = env<{
 		CLERK_PRIVATE_KEY: string;
 		CLERK_MACHINE_SECRET_KEY?: string;
 	}>(c, 'workerd');
 
+	// Standard JWT authentication
+	const authHeader = c.req.raw.headers.get('authorization');
+
+	if (!authHeader) {
+		console.log('No authorization header - returning 403');
+		return c.json({ error: 'Unauthenticated' }, 403);
+	}
+
+	const temp = authHeader.split('Bearer ');
+	if (!temp[1]) {
+		console.log('No Bearer token found - returning 403');
+		return c.json({ error: 'Unauthenticated' }, 403);
+	}
+
 	// Check for M2M token in X-API-Key header
 	const apiKeyHeader = c.req.raw.headers.get('x-api-key');
-	if (apiKeyHeader) {
+
+	if (apiKeyHeader && authHeader) {
 		if (!CLERK_MACHINE_SECRET_KEY) {
 			return c.json({ error: 'M2M authentication not configured' }, 403);
 		}
 
 		try {
+			let token: string | undefined;
+			const bearerValue = temp[1];
 			const clerkClient = createClerkClient({
-				secretKey: CLERK_MACHINE_SECRET_KEY,
+				secretKey: CLERK_PRIVATE_KEY,
 			});
 
-			const m2mToken = await clerkClient.m2m.verifyToken({ token: apiKeyHeader });
+			const m2mToken = await clerkClient.m2m.verify({
+				token: bearerValue,
+				machineSecretKey: CLERK_MACHINE_SECRET_KEY,
+			});
 
 			if (m2mToken.expired || m2mToken.revoked) {
 				return c.json({ error: 'Invalid or expired M2M token' }, 403);
@@ -63,18 +84,6 @@ export const checkAuth = async function (c: any, next: any) {
 			console.error('M2M auth error:', error.message || error);
 			return c.json({ error: 'Invalid M2M token' }, 403);
 		}
-	}
-
-	// Standard JWT authentication
-	const authHeader = c.req.raw.headers.get('authorization');
-
-	if (!authHeader) {
-		return c.json({ error: 'Unauthenticated' }, 403);
-	}
-
-	const temp = authHeader.split('Bearer ');
-	if (!temp[1]) {
-		return c.json({ error: 'Unauthenticated' }, 403);
 	}
 
 	try {
@@ -158,12 +167,15 @@ const hasAdminPermission = (permissionTitle: string | null | undefined): boolean
  * - Non-admin user does not belong to the specified club (if `clubId` param exists)
  */
 export const checkUserPermission = async function (c: any, next: any) {
+	console.log('checkUserPermission called');
 	const db = dbInitalizer({ c });
 	const clerkUserId = c.var.userId;
 	const isM2M = c.var.isM2M;
+	console.log('clerkUserId:', clerkUserId, 'isM2M:', isM2M);
 
 	// M2M requests bypass all permission checks
 	if (isM2M) {
+		console.log('M2M request - bypassing permission checks');
 		return next();
 	}
 
@@ -178,6 +190,7 @@ export const checkUserPermission = async function (c: any, next: any) {
 		.where(eq(users.token, clerkUserId));
 
 	if (!userResult || userResult.length === 0) {
+		console.error('User not found in database. Clerk ID:', clerkUserId);
 		return c.json({ error: 'User not found in database' }, 403);
 	}
 
@@ -204,7 +217,8 @@ export const checkUserPermission = async function (c: any, next: any) {
 			.where(and(eq(usersToClubs.user_id, user.id), eq(usersToClubs.club_id, parseInt(clubId, 10))));
 
 		if (!clubMembership || clubMembership.length === 0) {
-			return c.json({ error: 'User does not belong to this club' }, 403);
+			console.error(`User ${user.id} does not belong to club ${clubId}. Club memberships:`, clubMembership);
+			return c.json({ error: `User does not belong to club ${clubId}` }, 403);
 		}
 	}
 
