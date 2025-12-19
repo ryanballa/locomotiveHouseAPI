@@ -83,6 +83,7 @@ usersRouter.get('/me', checkAuth, async (c) => {
 			},
 		});
 	} catch (error) {
+		console.log(error);
 		return c.json(
 			{
 				error: 'Failed to fetch user',
@@ -164,7 +165,10 @@ usersRouter.put('/:id', checkAuth, checkUserPermission, async (c) => {
 		}
 
 		// Verify user exists
-		const userResult = await db.select().from(users).where(eq(users.id, parseInt(id, 10)));
+		const userResult = await db
+			.select()
+			.from(users)
+			.where(eq(users.id, parseInt(id, 10)));
 		if (userResult.length === 0) {
 			return c.json(
 				{
