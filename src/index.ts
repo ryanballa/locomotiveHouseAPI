@@ -24,7 +24,7 @@ import { usersRouter, clubUsersRouter } from './users/routes';
 import * as towerReportsModel from './towerReports/model';
 import { cors } from 'hono/cors';
 import { eq, and } from 'drizzle-orm';
-import { refreshAccessToken, extractRefreshToken } from './utils/tokenRefresh';
+import { refreshAccessToken } from './utils/tokenRefresh';
 import { checkAuth, checkUserPermission } from './utils/auth';
 
 export type Env = {
