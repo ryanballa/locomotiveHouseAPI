@@ -7,7 +7,6 @@ import { Hono } from 'hono';
 import { etag } from 'hono/etag';
 import { env } from 'hono/adapter';
 import { logger } from 'hono/logger';
-import { verifyToken, createClerkClient } from '@clerk/backend';
 import * as addressesModel from './addresses/model';
 import * as consistsModel from './consists/model';
 import * as usersModel from './users/model';
