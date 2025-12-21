@@ -125,6 +125,7 @@ towersRouter.post('/', async (c) => {
 		const towerData: towersModel.Tower = {
 			name: data.name,
 			club_id: parseInt(clubId, 10),
+			owner_id: data.owner_id ? parseInt(data.owner_id, 10) : undefined,
 			description: data.description || undefined,
 		};
 
@@ -192,10 +193,13 @@ towersRouter.put('/:id', async (c) => {
 			);
 		}
 
-		// Set club_id from route parameter
-		const towerData = {
-			...data,
+		// Preserve existing values and update with provided data
+		const existingTower = towerCheck.data[0];
+		const towerData: towersModel.Tower = {
+			name: data.name || existingTower.name,
 			club_id: parseInt(clubId, 10),
+			owner_id: data.owner_id !== undefined ? parseInt(data.owner_id, 10) : existingTower.owner_id,
+			description: data.description !== undefined ? data.description : existingTower.description,
 		};
 
 		const result = await towersModel.updateTower(db, id, towerData as towersModel.Tower);
