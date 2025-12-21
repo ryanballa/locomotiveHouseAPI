@@ -37,6 +37,12 @@ export const checkAuth = async function (c: any, next: any) {
 		CLERK_MACHINE_SECRET_KEY?: string;
 	}>(c, 'workerd');
 
+	// Debug: Log if CLERK_PRIVATE_KEY is undefined
+	if (!CLERK_PRIVATE_KEY) {
+		console.error('CLERK_PRIVATE_KEY is undefined!');
+		return c.json({ error: 'Server authentication not configured' }, 500);
+	}
+
 	// Standard JWT authentication
 	const authHeader = c.req.header('authorization');
 
@@ -109,6 +115,8 @@ export const checkAuth = async function (c: any, next: any) {
 			return c.json({ error: 'Unauthenticated' }, 403);
 		}
 
+		console.log('[checkAuth] Attempting to verify token. Token length:', token?.length, 'Has CLERK_PRIVATE_KEY:', !!CLERK_PRIVATE_KEY);
+
 		const verification = await verifyToken(token, {
 			secretKey: CLERK_PRIVATE_KEY,
 		});
@@ -116,7 +124,11 @@ export const checkAuth = async function (c: any, next: any) {
 		c.set('userId', verification.sub);
 		return next();
 	} catch (error) {
-		console.error('Auth error:', error.message || error);
+		console.error('Auth error details:', {
+			message: error.message || error,
+			stack: error.stack,
+			name: error.name,
+		});
 		return c.json({ error: 'Unauthenticated' }, 403);
 	}
 };
