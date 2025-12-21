@@ -4,9 +4,10 @@ import { eq, and } from 'drizzle-orm';
 import { towers } from '../db/schema';
 
 export interface Tower {
-	id: number;
+	id?: number;
 	name: string;
 	club_id: number;
+	owner_id?: number;
 	description?: string | null;
 	created_at?: Date;
 	updated_at?: Date;
@@ -94,6 +95,7 @@ export const createTower = async (db: NeonHttpDatabase<Record<string, never>>, d
 				name: data.name,
 				description: data.description,
 				club_id: data.club_id,
+				owner_id: data.owner_id,
 			})
 			.returning();
 		return { data: results };
@@ -121,6 +123,8 @@ export const updateTower = async (db: NeonHttpDatabase<Record<string, never>>, i
 				name: data.name,
 				description: data.description,
 				club_id: data.club_id,
+				owner_id: data.owner_id,
+				updated_at: new Date(),
 			})
 			.where(eq(towers.id, parseInt(id, 10)))
 			.returning();
