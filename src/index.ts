@@ -106,6 +106,80 @@ const hasAdminPermission = (permissionTitle: string | null | undefined): boolean
 	return permissionTitle === 'admin' || permissionTitle === 'super-admin';
 };
 
+const hasSuperAdminPermission = (permissionTitle: string | null | undefined): boolean => {
+	return permissionTitle === 'super-admin';
+};
+
+/**
+ * Super Admin Permission Check Middleware
+ * Verifies that the authenticated user has super-admin permission
+ * This is more restrictive than checkAdminPermission (which allows both admin and super-admin)
+ */
+const checkSuperAdminPermission = async function (c, next) {
+	const db = dbInitalizer({ c });
+	const clerkUserId = c.var.userId;
+	const isM2M = c.var.isM2M;
+
+	// M2M requests have super-admin-level access
+	if (isM2M) {
+		return next();
+	}
+
+	try {
+		// Find user in database by clerk ID
+		const userIdResult = await getUserIdFromClerkId(db, clerkUserId);
+
+		if (!userIdResult) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				403
+			);
+		}
+
+		// Get user with their permission
+		const userResult = await db
+			.select({
+				user: users,
+				permission: permissions,
+			})
+			.from(users)
+			.leftJoin(permissions, eq(users.permission, permissions.id))
+			.where(eq(users.id, userIdResult.id));
+
+		if (userResult.length === 0) {
+			return c.json(
+				{
+					error: 'User not found',
+				},
+				403
+			);
+		}
+
+		const userPermission = userResult[0].permission;
+
+		if (hasSuperAdminPermission(userPermission?.title)) {
+			return next();
+		}
+
+		return c.json(
+			{
+				error: 'Super admin permission required',
+			},
+			403
+		);
+	} catch (error) {
+		console.error('Super admin permission check error:', error);
+		return c.json(
+			{
+				error: 'Permission check failed',
+			},
+			500
+		);
+	}
+};
+
 /**
  * API Key verification middleware
  * Ensures requests include a valid API key in the X-API-Key header
@@ -746,7 +820,7 @@ app.get('/api/clubs/', checkAuth, async (c) => {
 	}
 });
 
-app.post('/api/clubs/', checkAuth, async (c) => {
+app.post('/api/clubs/', checkAuth, checkSuperAdminPermission, async (c) => {
 	const db = dbInitalizer({ c });
 	const data = await c.req.json();
 	const newClub = await clubsModel.createClub(db, data as clubsModel.Club);
