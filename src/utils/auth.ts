@@ -122,6 +122,7 @@ export const checkAuth = async function (c: any, next: any) {
 		});
 
 		c.set('userId', verification.sub);
+		c.set('clerkUserId', verification.sub);
 		return next();
 	} catch (error) {
 		console.error('Auth error details:', {

@@ -5,7 +5,7 @@ import { eq, and } from 'drizzle-orm';
 export interface Address {
 	id: number;
 	number: number;
-	description: string;
+	description?: string;
 	in_use: boolean;
 	user_id: number;
 	club_id: number;
@@ -17,24 +17,35 @@ export interface Result {
 }
 
 /**
- * Check if an address number is unique within a club
+ * Check if an address number can be used within a club.
+ * Duplicate address numbers are allowed, but only one can be in_use at a time.
  * @param db - Database instance
  * @param number - Address number to check
- * @param clubId - Club ID to check uniqueness in
+ * @param clubId - Club ID to check within
+ * @param inUse - Whether the new/updated address will be in_use
  * @param addressId - Optional address ID to exclude (for updates)
- * @returns Result with error if number already exists in club, null if valid
+ * @returns Result with error if another in_use address with same number exists, null if valid
  */
-const checkIfAddressNumberExistsInClub = async (
+const checkIfAddressNumberInUseInClub = async (
 	db: NeonHttpDatabase<Record<string, never>>,
 	number: number,
 	clubId: number,
+	inUse: boolean,
 	addressId: number | null = null
 ): Promise<Result> => {
+	// Only check for conflicts if the new/updated address will be in_use
+	if (!inUse) {
+		return {
+			error: null,
+			data: [],
+		};
+	}
+
 	try {
-		let query = db
+		const query = db
 			.select()
 			.from(addresses)
-			.where(and(eq(addresses.number, number), eq(addresses.club_id, clubId)));
+			.where(and(eq(addresses.number, number), eq(addresses.club_id, clubId), eq(addresses.in_use, true)));
 
 		const existing = await query;
 
@@ -45,7 +56,7 @@ const checkIfAddressNumberExistsInClub = async (
 
 		if (conflictingAddresses.length > 0) {
 			return {
-				error: `Address number ${number} already exists in this club`,
+				error: `Address number ${number} is already in use in this club`,
 			};
 		}
 	} catch (error) {
@@ -80,14 +91,14 @@ export const createAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 		return {
 			error: 'Missing data',
 		};
-	if (!data.number || !data.description || data.in_use === undefined || !data.user_id || !data.club_id) {
+	if (!data.number || data.in_use === undefined || !data.user_id || !data.club_id) {
 		return {
-			error: 'Missing required field. Required: number, description, in_use, user_id, club_id',
+			error: 'Missing required field. Required: number, in_use, user_id, club_id',
 		};
 	}
 
-	// Check if address number is unique within the club
-	const existingFlag = await checkIfAddressNumberExistsInClub(db, data.number, data.club_id, null);
+	// Check that only one address with this number can be in_use at a time
+	const existingFlag = await checkIfAddressNumberInUseInClub(db, data.number, data.club_id, data.in_use, null);
 
 	if (existingFlag.error) {
 		return {
@@ -126,17 +137,18 @@ export const updateAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 			error: 'Missing ID',
 		};
 
-	if (!data.number || !data.description || data.in_use === undefined || !data.user_id || !data.club_id) {
+	if (!data.number || data.in_use === undefined || !data.user_id || !data.club_id) {
 		return {
-			error: 'Missing required field. Required: number, description, in_use, user_id, club_id',
+			error: 'Missing required field. Required: number, in_use, user_id, club_id',
 		};
 	}
 
-	// Check if address number is unique within the club (excluding current address)
-	const existingFlag = await checkIfAddressNumberExistsInClub(
+	// Check that only one address with this number can be in_use at a time (excluding current address)
+	const existingFlag = await checkIfAddressNumberInUseInClub(
 		db,
 		data.number,
 		data.club_id,
+		data.in_use,
 		parseInt(id, 10)
 	);
 
