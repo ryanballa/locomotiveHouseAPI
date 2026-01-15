@@ -305,6 +305,15 @@ applicationsRouter.post('/', async (c) => {
 			);
 		}
 
+		if (!data.phone_number) {
+			return c.json(
+				{
+					error: 'Phone number is required',
+				},
+				400
+			);
+		}
+
 		// Validate age requirement if birthday is provided
 		if (data.birthday) {
 			const birthdayDate = new Date(data.birthday);
@@ -331,9 +340,11 @@ applicationsRouter.post('/', async (c) => {
 			club_id: parseInt(clubId, 10),
 			name: data.name || undefined,
 			email: data.email || undefined,
+			phone_number: data.phone_number,
 			birthday: data.birthday ? new Date(data.birthday) : undefined,
 			occupation: data.occupation || undefined,
 			interested_scale: data.interested_scale || undefined,
+			interest_length: data.interest_length || undefined,
 			special_interests: data.special_interests || undefined,
 			has_home_layout: data.has_home_layout !== undefined ? data.has_home_layout : undefined,
 			collection_size: data.collection_size || undefined,
@@ -486,9 +497,11 @@ applicationsRouter.put('/:id', checkAuth, checkUserPermission, async (c) => {
 			club_id: existingApplication.club_id,
 			name: data.name !== undefined ? data.name : existingApplication.name,
 			email: data.email !== undefined ? data.email : existingApplication.email,
+			phone_number: data.phone_number !== undefined ? data.phone_number : existingApplication.phone_number,
 			birthday: data.birthday !== undefined ? (data.birthday ? new Date(data.birthday) : null) : existingApplication.birthday,
 			occupation: data.occupation !== undefined ? data.occupation : existingApplication.occupation,
 			interested_scale: data.interested_scale !== undefined ? data.interested_scale : existingApplication.interested_scale,
+			interest_length: data.interest_length !== undefined ? data.interest_length : existingApplication.interest_length,
 			special_interests: data.special_interests !== undefined ? data.special_interests : existingApplication.special_interests,
 			has_home_layout: data.has_home_layout !== undefined ? data.has_home_layout : existingApplication.has_home_layout,
 			collection_size: data.collection_size !== undefined ? data.collection_size : existingApplication.collection_size,

@@ -40,9 +40,11 @@ export interface Application {
 	club_id: number;
 	name?: string | null;
 	email?: string | null;
+	phone_number: string;
 	birthday?: Date | null;
 	occupation?: string | null;
 	interested_scale?: string | null;
+	interest_length?: string | null;
 	special_interests?: string | null;
 	has_home_layout?: boolean | null;
 	collection_size?: string | null;
@@ -291,6 +293,11 @@ export const createApplication = async (db: NeonHttpDatabase<Record<string, neve
 			error: 'Missing required field: club_id',
 		};
 	}
+	if (!data.phone_number) {
+		return {
+			error: 'Missing required field: phone_number',
+		};
+	}
 
 	try {
 		const results = await db
@@ -299,9 +306,11 @@ export const createApplication = async (db: NeonHttpDatabase<Record<string, neve
 				club_id: data.club_id,
 				name: data.name,
 				email: data.email,
+				phone_number: data.phone_number,
 				birthday: data.birthday,
 				occupation: data.occupation,
 				interested_scale: data.interested_scale,
+				interest_length: data.interest_length,
 				special_interests: data.special_interests,
 				has_home_layout: data.has_home_layout,
 				collection_size: data.collection_size,
@@ -372,9 +381,11 @@ export const updateApplication = async (db: NeonHttpDatabase<Record<string, neve
 				club_id: data.club_id,
 				name: data.name,
 				email: data.email,
+				phone_number: data.phone_number,
 				birthday: data.birthday,
 				occupation: data.occupation,
 				interested_scale: data.interested_scale,
+				interest_length: data.interest_length,
 				special_interests: data.special_interests,
 				has_home_layout: data.has_home_layout,
 				collection_size: data.collection_size,
