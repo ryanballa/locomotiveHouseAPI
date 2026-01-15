@@ -181,6 +181,8 @@ export const applications = pgTable('applications', {
 	birthday: timestamp('schedule', { mode: 'date' }),
 	occupation: text('occupation'),
 	interested_scale: text('interested_scale'),
+	interest_length: text('interest_length'),
+	phone_number: text('phone_number'),
 	special_interests: text('special_interests'),
 	has_home_layout: boolean('has_home_layout'),
 	collection_size: text('collection_size'),
