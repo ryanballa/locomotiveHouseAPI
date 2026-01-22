@@ -9,6 +9,9 @@ export interface Address {
 	in_use: boolean;
 	user_id: number;
 	club_id: number;
+	road_number?: number;
+	manufacturer?: string;
+	road?: string;
 }
 
 export interface Result {
@@ -115,6 +118,9 @@ export const createAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 				in_use: data.in_use,
 				user_id: data.user_id,
 				club_id: data.club_id,
+				road_number: data.road_number,
+				manufacturer: data.manufacturer,
+				road: data.road,
 			})
 			.returning();
 
@@ -167,6 +173,9 @@ export const updateAddress = async (db: NeonHttpDatabase<Record<string, never>>,
 				in_use: data.in_use,
 				user_id: data.user_id,
 				club_id: data.club_id,
+				road_number: data.road_number,
+				manufacturer: data.manufacturer,
+				road: data.road,
 			})
 			.where(eq(addresses.id, parseInt(id, 10)))
 			.returning();

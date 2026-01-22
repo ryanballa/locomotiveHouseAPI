@@ -7,6 +7,9 @@ export const addresses = pgTable('addresses', {
 	number: integer('number').default(3).notNull(),
 	description: text('description').notNull(),
 	in_use: boolean('in_use').notNull(),
+	road_number: integer('road_number'),
+	manufacturer: text('manufacturer'),
+	road: text('road'),
 	user_id: integer('user_id')
 		.notNull()
 		.references(() => users.id),
