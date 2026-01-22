@@ -260,7 +260,7 @@ export const getTowerReportsByClubIdWithDateFilter = async (
 				whereCondition = and(
 					whereCondition,
 					and(
-						gte(towerReports.report_at, startDate),
+						gte(towerReports.report_at, new Date(year, month, 1)),
 						lt(towerReports.report_at, nextMonthStart)
 					)
 				);
