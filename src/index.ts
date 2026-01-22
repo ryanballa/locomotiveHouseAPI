@@ -435,13 +435,12 @@ app.route('/api/clubs/:clubId/applications', applicationsRouter);
 // Mount towers routes (general - must be last)
 app.route('/api/clubs/:clubId/towers', towersRouter);
 
-// Mount email queue routes with authentication
-// Create a sub-app to apply middlewares before mounting the router
-const emailQueueApp = new Hono<{ Bindings: Env }>();
-emailQueueApp.use(checkApiKey);
-emailQueueApp.use(checkEmailQueueAuth);
-emailQueueApp.route('/', emailQueueRouter);
-app.route('/api/email-queue', emailQueueApp);
+// apply middleware only to this subtree
+app.use('/api/email-queue/*', checkApiKey, checkEmailQueueAuth);
+app.use('/api/email-queue', checkApiKey, checkEmailQueueAuth);
+
+// mount router directly at the final prefix
+app.route('/api/email-queue', emailQueueRouter);
 
 /**
  * GET all tower reports for a club
