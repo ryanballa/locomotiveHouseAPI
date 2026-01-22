@@ -4,6 +4,12 @@ main = "src/index.ts"
 compatibility_date = "2024-05-24"
 compatibility_flags = ["nodejs_compat"]
 
+# Custom domain routing
+routes = [
+  { pattern = "api.locomotivehouse.com/*", zone_name = "locomotivehouse.com" }
+]
+workers_dev = true
+
 [version_metadata]
 binding = "CF_VERSION_METADATA"
 
